@@ -11,7 +11,7 @@ describe('Session.compact()', () => {
       storage,
       llm: scriptedLLM([]),
       tools: new ToolRegistry(),
-      [REDACTED]: '',
+      systemPrompt: '',
     });
     await expect(session.compact()).rejects.toThrow('replaceRange not implemented');
   });
@@ -25,7 +25,7 @@ describe('Session.compact()', () => {
       storage,
       llm: scriptedLLM([]),
       tools: new ToolRegistry(),
-      [REDACTED]: '',
+      systemPrompt: '',
     });
     const notices: string[] = [];
     session.on('system_notice', (e) => notices.push(e.code));
@@ -45,7 +45,7 @@ describe('Session.compact()', () => {
       storage,
       llm: scriptedLLM([[{ type: 'text', delta: 'summary text' }, { type: 'finish', reason: 'stop' }]]),
       tools: new ToolRegistry(),
-      [REDACTED]: '',
+      systemPrompt: '',
     });
     const compactStart: number[] = [];
     const compactDone: any[] = [];
