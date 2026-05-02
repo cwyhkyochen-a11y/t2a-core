@@ -304,6 +304,7 @@ export class AgentLoop {
    *
    * `serial` waits between invocations; `parallel` uses Promise.all.
    * Timeouts are enforced per-tool (defaults come from SessionConfig.toolTimeoutMs).
+   * T5: Emits long_wait when a tool exceeds longWaitMs.
    */
   private async runTools(args: {
     toolCalls: ToolCall[];
@@ -312,13 +313,26 @@ export class AgentLoop {
     bus: EventBus;
     abortSignal: AbortSignal;
     parallelism: 'serial' | 'parallel';
+    longWaitMs?: number;
   }): Promise<ToolResult[]> {
-    const { toolCalls, tools, sessionId, bus, abortSignal, parallelism } = args;
+    const { toolCalls, tools, sessionId, bus, abortSignal, parallelism, longWaitMs } = args;
 
     const runOne = async (call: ToolCall): Promise<ToolResult> => {
       const parsedArgs = parseArgs(call.function.arguments);
       const started = Date.now();
       const toolName = call.function.name;
+
+      // T5: long wait timer
+      let longWaitTimer: NodeJS.Timeout | undefined;
+      if (longWaitMs && longWaitMs > 0) {
+        longWaitTimer = setTimeout(() => {
+          bus.emit('long_wait', {
+            id: call.id,
+            name: toolName,
+            elapsedMs: Date.now() - started,
+          });
+        }, longWaitMs);
+      }
 
       const ctx: ToolContext = {
         sessionId,
@@ -339,6 +353,8 @@ export class AgentLoop {
         // for programmer errors inside the registry itself.
         bus.emit('tool_error', { id: call.id, name: toolName, error: toError(err) });
         result = { ok: false, error: toError(err).message };
+      } finally {
+        if (longWaitTimer) clearTimeout(longWaitTimer);
       }
       const duration = Date.now() - started;
       bus.emit('tool_end', { id: call.id, name: toolName, result, durationMs: duration });
