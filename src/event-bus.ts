@@ -28,6 +28,9 @@ const INTERNAL_EVENT_NAMES: ReadonlySet<keyof SessionEvents> = new Set<keyof Ses
   'done',
   'system_notice',
   'error',
+  'long_wait',
+  'compact_start',
+  'compact_done',
 ]);
 
 function isInternalEvent(name: string): name is keyof SessionEvents {
