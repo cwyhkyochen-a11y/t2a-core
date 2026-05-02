@@ -34,3 +34,11 @@
 
 准备实现 tool 执行超时检测 + long_wait 事件
 
+
+### 2026-05-02 19:47 — T5 long_wait 完成
+
+- agent-loop.runTools 增加 longWaitMs 参数
+- tool 执行超过 longWaitMs 时 emit long_wait 事件
+- 单测覆盖 long_wait 触发路径
+- 覆盖率 lines 93.4% / branches 80.32% ✅ 达标
+
