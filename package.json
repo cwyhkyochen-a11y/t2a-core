@@ -1,0 +1,58 @@
+{
+  "name": "t2a-core",
+  "version": "0.1.0",
+  "description": "Talk-to-Action SDK core: single-session three-role (user/assistant/system_event) conversation kernel with zero runtime deps.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "agent",
+    "llm",
+    "openai",
+    "tool-calling",
+    "session",
+    "talk-to-action",
+    "mdm"
+  ],
+  "author": "kyo",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PLACEHOLDER/t2a-core.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PLACEHOLDER/t2a-core/issues"
+  },
+  "homepage": "https://github.com/PLACEHOLDER/t2a-core#readme",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@vitest/coverage-v8": "^1.6.0",
+    "tsup": "^8.0.2",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}
