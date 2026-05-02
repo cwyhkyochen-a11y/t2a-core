@@ -361,7 +361,9 @@ export type InterludeBucket =
   | 'on_tool_start'
   | 'on_long_wait'
   | 'on_overflow_warning'
-  | 'on_overflow_hit';
+  | 'on_overflow_hit'
+  | 'on_compact_start'
+  | 'on_compact_done';
 
 /**
  * Pluggable slang library. Returning `null` means "skip this time" (probability gate).
@@ -455,6 +457,13 @@ export interface SessionConfig {
   readonly toolParallelism: ToolParallelism;
   readonly interrupt: InterruptConfig;
   readonly systemEventInjection: SystemEventInjectionConfig;
+  /** T5: long wait threshold in ms (default 8000). */
+  readonly longWaitMs?: number;
+  /** T3: compact configuration. */
+  readonly compact?: {
+    readonly keepLastN?: number;
+    readonly summarizerSystemPrompt?: string;
+  };
 }
 
 // ============================================================================
@@ -610,6 +619,12 @@ export interface SessionEvents {
   system_notice: { readonly code: string; readonly text: string };
   /** Any phase threw a fatal error. */
   error: { readonly phase: string; readonly error: Error };
+  /** T5: tool execution exceeded longWaitMs. */
+  long_wait: { readonly id: string; readonly name: string; readonly elapsedMs: number };
+  /** T3: compact started. */
+  compact_start: { readonly messageCount: number };
+  /** T3: compact finished. */
+  compact_done: { readonly summary: string; readonly originalCount: number; readonly kept: number };
 }
 
 /**

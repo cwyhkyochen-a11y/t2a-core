@@ -81,6 +81,7 @@ export function buildLLMMessages(
 
 function buildAssistant(msg: AssistantMessage): OpenAIMessage {
   // Preserve content=null when only tool_calls present (DESIGN § 2.1 / OpenAI protocol).
+  // T2: interrupted assistant messages are passed to LLM as-is (OpenAI allows partial).
   if (msg.toolCalls && msg.toolCalls.length > 0) {
     return {
       role: 'assistant',

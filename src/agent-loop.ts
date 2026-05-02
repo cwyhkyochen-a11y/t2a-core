@@ -111,7 +111,7 @@ export class AgentLoop {
 
       mergeUsage(accumulatedUsage, usage);
 
-      // Step 3a: interrupted mid-stream → persist partial + stop.
+      // Step 3a: interrupted mid-stream → persist partial + stop (T1).
       if (interrupted) {
         const partial: Omit<AssistantMessage, 'createdAt'> & { createdAt?: number } = {
           role: 'assistant',

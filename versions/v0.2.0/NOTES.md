@@ -14,3 +14,8 @@
 - 打断重组要覆盖「打断时正在 tool_call_delta 累加中」这种边界
 - compact summary 作为 system_event 落库，content 带 `kind=compact_summary` + 原始条数
 - 长 wait timer 必须在 tool reject/resolve 后清掉，别泄漏
+## Session 2026-05-02 19:35 — subagent
+
+**开始执行 v0.2.0 任务清单**
+
+
