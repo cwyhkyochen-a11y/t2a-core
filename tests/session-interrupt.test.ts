@@ -11,7 +11,7 @@ describe('Session interrupt', () => {
       storage,
       llm: scriptedLLM([[{ type: 'text', delta: 'partial' }]]),
       tools: new ToolRegistry(),
-      [REDACTED]: '',
+      systemPrompt: '',
     });
 
     const promise = session.sendUserMessage('test');

@@ -162,7 +162,6 @@ export class AgentLoop {
         abortSignal,
         parallelism: config.toolParallelism,
         longWaitMs: config.longWaitMs ?? 8000,
-        longWaitMs: config.longWaitMs ?? 8000,
       });
       toolCallsExecuted += results.length;
 
