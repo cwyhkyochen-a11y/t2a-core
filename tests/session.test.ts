@@ -44,13 +44,13 @@ describe('Session', () => {
     expect(states).toContain('done');
   });
 
-  it('intercepts /compact with system_notice', async () => {
+  it('intercepts /compact and emits error when replaceRange missing', async () => {
     const { session } = makeSession();
     const notices: string[] = [];
     session.on('system_notice', (e) => notices.push(e.code));
     const result = await session.sendUserMessage('/compact');
-    expect(result.finishReason).toBe('natural');
-    expect(notices).toContain('compact_not_implemented');
+    expect(result.finishReason).toBe('error');
+    expect(notices).toContain('compact_failed');
   });
 
   it('emits overflow_hit when exceeding contextMaxTokens', async () => {

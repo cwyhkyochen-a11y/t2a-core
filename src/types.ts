@@ -341,7 +341,7 @@ export interface Storage {
     sessionId: string,
     fromId: number | string,
     toId: number | string,
-    replacement: StoredMessage,
+    replacement: AppendMessageInput,
   ): Promise<void>;
 }
 

@@ -95,16 +95,22 @@ export class Session implements SessionLike {
   async sendUserMessage(content: string | readonly MultiPart[]): Promise<TurnResult> {
     this.assertNotDisposed();
 
-    // 1) /compact intercept (decision 3 / v0.1 placeholder).
+    // 1) /compact intercept (T4: now calls session.compact()).
     if (
       typeof content === 'string' &&
       content.trim() === this.config.compactCommand
     ) {
-      this.bus.emit('system_notice', {
-        code: 'compact_not_implemented',
-        text: '上下文压缩功能 v0.1 暂未实现，请手动开新会话',
-      });
-      return noopTurnResult('natural');
+      try {
+        await this.compact();
+        this.maybeInterlude('on_compact_done');
+        return noopTurnResult('natural');
+      } catch (err) {
+        this.bus.emit('system_notice', {
+          code: 'compact_failed',
+          text: err instanceof Error ? err.message : String(err),
+        });
+        return noopTurnResult('error');
+      }
     }
 
     // 2) overflow check (pre-insert so users get told before we persist junk).
@@ -286,7 +292,9 @@ export class Session implements SessionLike {
       | 'on_tool_start'
       | 'on_long_wait'
       | 'on_overflow_warning'
-      | 'on_overflow_hit',
+      | 'on_overflow_hit'
+      | 'on_compact_start'
+      | 'on_compact_done',
   ): void {
     const text = this.interlude.get(bucket);
     if (text) this.bus.emit('interlude', { bucket, text });
@@ -296,6 +304,93 @@ export class Session implements SessionLike {
     if (this.disposed) {
       throw new Error('[t2a-core] session has been disposed');
     }
+  }
+
+  /**
+   * T3: Compact session history by summarizing old messages.
+   * Requires `Storage.replaceRange` to be implemented.
+   */
+  async compact(opts?: { keepLastN?: number }): Promise<void> {
+    this.assertNotDisposed();
+
+    if (!this.storage.replaceRange) {
+      throw new Error('[t2a-core] Storage.replaceRange not implemented');
+    }
+
+    const keepLastN = opts?.keepLastN ?? this.config.compact?.keepLastN ?? 10;
+    const history = await this.storage.loadMessages(this.sessionId);
+
+    if (history.length <= keepLastN) {
+      this.bus.emit('system_notice', {
+        code: 'compact_nothing_to_do',
+        text: `历史消息不足 ${keepLastN} 条，无需压缩`,
+      });
+      return;
+    }
+
+    const toCompact = history.slice(0, history.length - keepLastN);
+    const kept = history.slice(history.length - keepLastN);
+
+    this.bus.emit('compact_start', { messageCount: toCompact.length });
+    this.maybeInterlude('on_compact_start');
+
+    // Build summarizer prompt
+    const summarizerPrompt =
+      this.config.compact?.summarizerSystemPrompt ??
+      '你是一个对话历史总结助手。请将以下对话历史压缩为简洁的摘要，保留关键信息和决策。';
+
+    const messagesToSummarize = toCompact
+      .map((m) => {
+        if (m.role === 'user')
+          return `User: ${typeof m.content === 'string' ? m.content : '[multipart]'}`;
+        if (m.role === 'assistant') return `Assistant: ${m.content ?? '[tool_calls]'}`;
+        if (m.role === 'tool') return `Tool: ${m.content}`;
+        if (m.role === 'system_event')
+          return `SystemEvent[${m.source}]: ${JSON.stringify(m.payload)}`;
+        return '';
+      })
+      .join('\n');
+
+    const summaryMessages: Array<{ role: 'system' | 'user'; content: string }> = [
+      { role: 'system', content: summarizerPrompt },
+      { role: 'user', content: messagesToSummarize },
+    ];
+
+    // Call LLM to summarize
+    const abortController = new AbortController();
+    let summary = '';
+    try {
+      for await (const chunk of this.llm.chatStream({
+        model: this.model,
+        messages: summaryMessages,
+        abortSignal: abortController.signal,
+        maxTokens: 2000,
+      })) {
+        if (chunk.type === 'text') summary += chunk.delta;
+      }
+    } catch (err) {
+      throw new Error(`[t2a-core] compact summarization failed: ${err}`);
+    }
+
+    // Replace range with summary system_event
+    const fromId = toCompact[0]!.id;
+    const toId = toCompact[toCompact.length - 1]!.id;
+    const summaryMsg: Omit<SystemEventMessage, 'createdAt'> = {
+      role: 'system_event',
+      source: 'compact_summary',
+      payload: { summary, originalCount: toCompact.length },
+      defaultResponse: '',
+      triggerAgent: false,
+    };
+
+    await this.storage.replaceRange(this.sessionId, fromId, toId, summaryMsg);
+
+    this.bus.emit('compact_done', {
+      summary,
+      originalCount: toCompact.length,
+      kept: kept.length,
+    });
+    this.maybeInterlude('on_compact_done');
   }
 }
 
