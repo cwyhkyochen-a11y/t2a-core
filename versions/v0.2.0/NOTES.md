@@ -19,3 +19,13 @@
 **开始执行 v0.2.0 任务清单**
 
 
+
+### 2026-05-02 19:42 — T3/T4 compact 完成
+
+- Storage.replaceRange 签名改为接受 AppendMessageInput（不强制 createdAt）
+- Session.compact() 实现：调 LLM 总结 → replaceRange 替换
+- /compact 命令拦截改为调用 session.compact()，失败时 emit compact_failed
+- 新增 2 个单测覆盖 compact 成功/失败路径
+- InterludeBucket 增 on_compact_start / on_compact_done
+- maybeInterlude 增加两个新桶
+
