@@ -1,20 +1,20 @@
 # t2a-core 路线图
 
-## v0.1.0 — 核心 SDK 落地
+## v0.1.0 — 核心 SDK 落地（已封版 2026-05-02）
 
 **范围**：
 
-- [ ] `Session` 类全部接口实现
-- [ ] `ToolRegistry` / `EventBus` 内置实现
-- [ ] `AgentLoop` 串行 + 并行两种模式
-- [ ] `OpenAILLMClient` 子包（兼容 OpenAI / MiMo / DeepSeek）
-- [ ] `SQLiteStorage` / `MemoryStorage` 参考实现子包
-- [ ] `DefaultInterludeProvider` + 默认词条（每桶 5-8 条）
-- [ ] `onOverflow: 'reject'` 行为
-- [ ] system_event 降级注入（默认模板 + 自定义模板）
-- [ ] 流式 abort（`session.interrupt()`）
-- [ ] 完整 TypeScript 类型 + JSDoc
-- [ ] 单元测试覆盖率 > 70%
+- [x] `Session` 类全部接口实现
+- [x] `ToolRegistry` / `EventBus` 内置实现
+- [x] `AgentLoop` 串行 + 并行两种模式
+- [ ] ~~`OpenAILLMClient` 子包~~ → 推到 v0.3 随 imagine 迁移一起交付
+- [ ] ~~`SQLiteStorage` / `MemoryStorage` 参考实现子包~~ → 推到 v0.3
+- [x] `DefaultInterludeProvider` + 默认词条（每桶 6-7 条）
+- [x] `onOverflow: 'reject'` 行为
+- [x] system_event 降级注入（默认模板 + 自定义模板）
+- [x] 流式 abort（`session.interrupt()`）
+- [x] 完整 TypeScript 类型 + JSDoc
+- [x] 单元测试覆盖率 92.79%（远过 70% 门槛）
 
 **不在范围**：
 
@@ -43,18 +43,22 @@
 
 ---
 
-## v0.3.0 — imagine adapter 完整迁移
+## v0.3.0 — imagine adapter 完整迁移 + 首发 npm
 
 **范围**：
 
+- [ ] `OpenAILLMClient` 子包（兼容 OpenAI / MiMo / DeepSeek）— 从 v0.1 推过来
+- [ ] `SQLiteStorage` / `MemoryStorage` 参考实现 — 从 v0.1 推过来
 - [ ] 把 `projects/img-gen-tool/chat-handler.js` 改用 t2a-core
 - [ ] `message-builder.js` 删除（被 SDK 替代）
 - [ ] image task 完成回调改成 `pushSystemEvent`
 - [ ] 写 imagine 端的 SQLiteStorage 适配（兼容现有表）
 - [ ] DB migration 脚本
 - [ ] 行为对比：旧版 vs 新版的回归测试
+- [ ] typedoc 文档站（从 v0.1 推过来）
+- [ ] **首发 npm 包 `@t2a/core@0.3.0`**（kyo 2026-05-02 拍板）
 
-**验收**：imagine 行为不退化，chat-handler.js 瘦身到 < 200 行。
+**验收**：imagine 行为不退化，chat-handler.js 瘦身到 < 200 行，npm 包装安装后 quickstart 能跑。
 
 ---
 

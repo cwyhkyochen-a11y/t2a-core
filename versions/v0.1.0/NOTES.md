@@ -78,3 +78,47 @@
 - `MultiPart` 用 `readonly` array，业务方传字面量数组可能要 `as const` 或调整，待 kyo 审阅时确认要不要放宽
 - `OpenAIMessage.tool_calls` 沿用 OpenAI 蛇形 key，与内部 `AssistantMessage.toolCalls` 驼峰区分（前者面向 LLM，后者面向存储），需要在文档显眼位置说一下
 - types.ts 不勾 PLAN.md 任何任务（实现 ≠ 类型定义，PLAN 里勾选门槛是「主类实现 + 单测覆盖」）
+
+### 2026-05-02 18:50 — yoyo（feishu→subagent，中途 abort）
+
+**已完成：**
+- Phase A docs：所有 `t2a-core` 包名改 `@t2a/core`、SCHEMA 双 DDL 加 `interrupted` 列、DESIGN async-by-event 用法说明（commit `1d37895`）
+- Phase B 由 subagent 写出 6 核心模块 ~1160 行（event-bus / tool-registry / message-builder / interlude-provider / session / agent-loop），中途被 abort，未提交、未验证
+
+**踩坑：**
+- 飞书 session 上下文累积过载，routetokens Opus 4.7 一轮返回空 content，session 卡 done 出不来 → /new
+- 解决方式：微信 session 写 `versions/v0.1.0/HANDOFF.md` 接力
+
+### 2026-05-02 18:55 — yoyo（main session 接力）
+
+**完成：**
+- 验证 subagent 产出，发现两处 typecheck 错：
+  1. `Storage.appendMessage` 入参 `Omit<StoredMessage, 'createdAt'>` 在联合类型下坍塌成公共键（只剩 `role`）→ types.ts 加 `DistributiveOmit<T,K>` + `AppendMessageInput`
+  2. agent-loop 流式累加 `tool_call_delta` 时往 `Partial<ToolCall>` 写 readonly 字段 → 改用本地可变类型 `ToolCallAcc` 累加，最后再装配 readonly `ToolCall`
+- 两处都不动公开接口签名
+- 写 6 个测试文件 + 1 个 helpers（in-memory Storage / scriptedLLM）
+- `npx tsc --noEmit` ✅ / `npm run build` ✅ / `npm test` ✅（45 tests pass）
+- 覆盖率 92.79% lines / 80.42% branches / 90.47% funcs / 92.79% stmts，过 80% 门槛
+- commit `3ecf5b1` feat(v0.1.0): core implementation
+
+**新踩坑（已写 lessons）：**
+- `Omit<UnionType, K>` 默认不分发联合类型，会坍塌成公共键。要分发就得自己写 `T extends unknown ? Omit<T,K> : never`。所有定义 SDK 接口拿 union 当入参的地方都要警惕。
+
+## v0.1.0 封版决策（2026-05-02 19:03）
+
+kyo 拍板：
+- v0.3 再发 npm + imagine 迁移
+- v0.1.0 验证通过即封版，纯 SDK 基建版
+- PLAN 第六章 imagine 试点迁移 → 移到 v0.3.0
+
+**v0.1.0 不含：**
+- imagine adapter 迁移（移 v0.3）
+- typedoc 文档站（推后，软门槛）
+- npm publish（v0.3 一并发）
+
+**v0.1.0 实际交付：**
+- 设计文档 6 份 ≈ 1608 行 / 22000 字
+- 核心 SDK 6 模块 ≈ 1160 行 + types.ts 625 行
+- 单测 6 文件 / 45 用例 / 覆盖率 92.79%
+- tsup 构建产物 ESM + CJS + dts（dts 26KB）
+- 4 commits（d9d7815 → 3ecf5b1）
