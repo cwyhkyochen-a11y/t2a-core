@@ -122,6 +122,21 @@ export type Message = StoredMessage;
 /** A persisted message with a storage-assigned identifier. */
 export type StoredMessageWithId = StoredMessage & { readonly id: number | string };
 
+/**
+ * Distributive `Omit` — preserves the discriminated union when stripping a key.
+ *
+ * Plain `Omit<StoredMessage, 'createdAt'>` collapses the union to its common
+ * fields (only `role`), which is wrong for our storage input type.
+ */
+export type DistributiveOmit<T, K extends keyof T> = T extends unknown
+  ? Omit<T, K>
+  : never;
+
+/** Input shape accepted by `Storage.appendMessage`. */
+export type AppendMessageInput = DistributiveOmit<StoredMessage, 'createdAt'> & {
+  readonly createdAt?: number;
+};
+
 // ============================================================================
 // § 2.4 / § 3.4 ToolRegistry
 // ============================================================================
@@ -306,7 +321,7 @@ export interface Storage {
   /** Append a message; returns the persisted record with its assigned id. */
   appendMessage(
     sessionId: string,
-    msg: Omit<StoredMessage, 'createdAt'> & { createdAt?: number },
+    msg: AppendMessageInput,
   ): Promise<StoredMessageWithId>;
 
   /** Load messages, ordered ascending by time. */
