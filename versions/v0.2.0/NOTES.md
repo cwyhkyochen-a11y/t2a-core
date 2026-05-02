@@ -42,3 +42,23 @@
 - 单测覆盖 long_wait 触发路径
 - 覆盖率 lines 93.4% / branches 80.32% ✅ 达标
 
+
+### 2026-05-02 19:50 — v0.2.0 封版
+
+**完成任务：**
+- T1/T2: 打断重组 - partial assistant 落库 + interrupted 标记
+- T3/T4: compact 实现 - session.compact() + /compact 命令
+- T5: long_wait - tool 执行超时检测
+- T6: overflow_warning/overflow_hit 接俚语库
+
+**测试覆盖：**
+- 49 tests passed
+- lines 93.4% ✅
+- branches 80.32% ✅
+- functions 90.62% ✅
+
+**产出：**
+- 6 commits
+- 新增 3 个测试文件
+- types/session/agent-loop/event-bus/interlude-provider 全部增量完成
+
