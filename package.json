@@ -52,10 +52,20 @@
   },
   "homepage": "https://github.com/kyochen/t2a-core#readme",
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
     "@types/node": "^20.11.0",
     "@vitest/coverage-v8": "^1.6.0",
+    "better-sqlite3": "^11.0.0",
     "tsup": "^8.0.2",
     "typescript": "^5.4.5",
     "vitest": "^1.6.0"
+  },
+  "peerDependencies": {
+    "better-sqlite3": "^11.0.0"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": {
+      "optional": true
+    }
   }
 }

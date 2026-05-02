@@ -12,3 +12,11 @@ export { DefaultInterludeProvider } from './interlude-provider.js';
 export { AgentLoop } from './agent-loop.js';
 export type { AgentLoopContext } from './agent-loop.js';
 export { Session } from './session.js';
+export { OpenAILLMClient } from './llm-openai.js';
+export type { OpenAILLMClientOptions } from './llm-openai.js';
+export { SQLiteStorage, defaultTokenCounter } from './storage-sqlite.js';
+export type {
+  SQLiteStorageOptions,
+  TokenCounter,
+  BetterSqliteDatabaseLike,
+} from './storage-sqlite.js';
