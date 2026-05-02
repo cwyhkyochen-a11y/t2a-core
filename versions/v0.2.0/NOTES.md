@@ -29,3 +29,8 @@
 - InterludeBucket 增 on_compact_start / on_compact_done
 - maybeInterlude 增加两个新桶
 
+
+### 2026-05-02 19:43 — T5 long_wait 开始
+
+准备实现 tool 执行超时检测 + long_wait 事件
+
