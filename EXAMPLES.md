@@ -7,7 +7,7 @@
 ## a. 最小 quickstart（10 分钟跑起来）
 
 ```ts
-import { Session, ToolRegistry, OpenAILLMClient } from 't2a-core';
+import { Session, ToolRegistry, OpenAILLMClient } from '@t2a/core';
 import { SQLiteStorage } from '@t2a/storage-sqlite';
 
 // 1. 工具注册

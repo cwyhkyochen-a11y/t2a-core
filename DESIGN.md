@@ -652,13 +652,58 @@ interface SessionConfig {
 
 ### 4.3 业务实现要点
 
+- **Storage 与 Session 池都由应用方持有**：t2a-core **不**管 session 池、不管 Storage 实例化、不管表的迁移。应用方维护一个 `Map<sessionId, Session>` 并在异步回调里按 sessionId 取实例
 - **task 队列与 session 解耦**：task queue 不持有 session 引用，只持 `sessionId` / `conversationId`。回调时由业务从 session pool / Map 里取出 session 实例
 - **session 已 dispose 怎么办**：`pushSystemEvent` 在 session 已 dispose 时静默丢弃（或入库不 trigger，留待下次 session 启动时回放，由业务决定）
 - **不依赖 trigger 也可以**：`triggerAgent: false` 就只入库 + emit `system_event_arrived`，应用层用 `defaultResponse` 自己渲染一条卡片 / toast，不烧 LLM token
 - **abort 时不取消已发起的 task**：参考 § 2.2 / 决策 2。`config.interrupt.cancelPendingTools` 在 v0.1 强制 false
 - **task 失败也是事件**：`source='imagine.task'`、`payload.status='failed'`、`payload.error='...'`，让 LLM 一句话告诉用户失败了
 
-### 4.4 对照反例
+### 4.4 标准范式（推荐写法）
+
+```ts
+// 应用方启动时：维护一个全局 session 池
+const sessionPool = new Map<string, Session>();
+
+function getOrCreateSession(sessionId: string): Session {
+  let s = sessionPool.get(sessionId);
+  if (s) return s;
+  s = new Session({ sessionId, storage, llm, tools, /* ... */ });
+  sessionPool.set(sessionId, s);
+  return s;
+}
+
+// Tool handler：发起任务，立刻返回 task_id；通过 ctx.sessionId 让外部回写
+tools.register({
+  schema: { name: 'generate_image', /* ... */ },
+  handler: async (args, ctx) => {
+    const taskId = await imageService.createTask(args);
+    // 把 (taskId → sessionId) 绑定关系交给业务 DB 去存
+    await db.insertTaskBinding({ taskId, sessionId: ctx.sessionId });
+    return { ok: true, data: { task_id: taskId } };
+  },
+});
+
+// 任务完成事件：根据 sessionId 找 session、推 system_event
+imageService.on('task_done', async ({ taskId, url }) => {
+  const { sessionId } = await db.getTaskBinding(taskId);
+  const session = sessionPool.get(sessionId);
+  if (!session) return; // session 可能已 dispose / 被 LRU 清理
+  await session.pushSystemEvent({
+    source: 'image_task',
+    payload: { taskId, url },
+    defaultResponse: '图片生成完成',
+    triggerAgent: true,
+  });
+});
+```
+
+要点：
+- `ctx.sessionId` 是 handler 唯一拿到的 session 锚点。SDK **不**在 ctx 上提供 `pushSystemEvent` helper（避免诱导业务方在 handler 内同步 await 异步事件，把异步范式带歪）
+- `taskId → sessionId` 绑定表是业务自己的事；t2a-core 不管
+- 任务完成事件 listener 注册在外部服务（imageService）上，与 SDK 完全解耦
+
+### 4.5 对照反例
 
 ```ts
 // ❌ 不要这样写

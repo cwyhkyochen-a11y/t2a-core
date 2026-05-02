@@ -43,7 +43,7 @@
 | `event_default_response` | text | system_event | 默认回复文案 |
 | `event_trigger_agent` | tinyint(1) | system_event | 0/1 |
 | `token_count` | int | 全部 | 估算 token 数 |
-| `interrupted` | tinyint(1) | assistant | 该消息是被打断后落库的 |
+| `interrupted` | tinyint(1) | assistant | 0/1。被中断时 SDK 会落一条 partial assistant 消息并置 1；DESIGN § 5.3 / § 9.1。默认 NOT NULL DEFAULT 0。 |
 | `meta` | json | 全部 | 业务扩展（task_id / task_type 等） |
 | `created_at` | datetime | 全部 | |
 | `deleted_at` | datetime null | 全部 | soft delete |

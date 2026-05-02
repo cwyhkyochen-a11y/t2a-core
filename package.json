@@ -1,6 +1,9 @@
 {
-  "name": "t2a-core",
+  "name": "@t2a/core",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "Talk-to-Action SDK core: single-session three-role (user/assistant/system_event) conversation kernel with zero runtime deps.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -42,12 +45,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/PLACEHOLDER/t2a-core.git"
+    "url": "git+https://github.com/kyochen/t2a-core.git"
   },
   "bugs": {
-    "url": "https://github.com/PLACEHOLDER/t2a-core/issues"
+    "url": "https://github.com/kyochen/t2a-core/issues"
   },
-  "homepage": "https://github.com/PLACEHOLDER/t2a-core#readme",
+  "homepage": "https://github.com/kyochen/t2a-core#readme",
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@vitest/coverage-v8": "^1.6.0",

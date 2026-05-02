@@ -1,5 +1,7 @@
 # t2a-core
 
+> npm 包名：`@t2a/core` · 项目/仓库名：`t2a-core`
+
 > Talk-to-Action 内核 SDK。让 LLM 对话不再只是"问答"，而是能听用户、调工具、还能被系统主动"敲一下"的协同体。
 
 ## 这是什么
@@ -22,7 +24,7 @@
 ## Quickstart
 
 ```ts
-import { Session, ToolRegistry, MemoryStorage, OpenAILLMClient } from 't2a-core';
+import { Session, ToolRegistry, MemoryStorage, OpenAILLMClient } from '@t2a/core';
 
 const tools = new ToolRegistry();
 tools.register({

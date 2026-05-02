@@ -181,12 +181,6 @@ export interface ToolContext {
    * `eventName` MUST start with `tool_` (decision 5).
    */
   readonly emit: (eventName: ToolEventName, data: unknown) => void;
-  /**
-   * Convenience helper for tools that want to push a `system_event` back
-   * (e.g. async-by-event pattern). Mirrors `Session.pushSystemEvent`.
-   * @see DESIGN.md § 4
-   */
-  readonly pushSystemEvent: (input: PushSystemEventInput) => Promise<TurnResult | void>;
 }
 
 /**
