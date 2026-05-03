@@ -36,6 +36,8 @@ export interface OpenAILLMClientOptions {
   readonly fetchImpl?: typeof fetch;
   /** Extra HTTP headers to merge into each request. */
   readonly headers?: Readonly<Record<string, string>>;
+  /** 是否把 reasoning_content / reasoning 字段解析为 thinking chunk */
+  readonly parseReasoning?: boolean;
 }
 
 interface OpenAIStreamingToolCall {
@@ -232,6 +234,14 @@ export class OpenAILLMClient implements LLMClient {
 
           const delta = choice.delta;
           if (delta) {
+            // reasoning/thinking support (o1/o3/o4-mini)
+            if (this.opts.parseReasoning) {
+              const reasoning = (delta as Record<string, unknown>).reasoning_content
+                ?? (delta as Record<string, unknown>).reasoning;
+              if (typeof reasoning === 'string' && reasoning.length > 0) {
+                yield { type: 'thinking', delta: reasoning };
+              }
+            }
             if (typeof delta.content === 'string' && delta.content.length > 0) {
               yield { type: 'text', delta: delta.content };
             }
