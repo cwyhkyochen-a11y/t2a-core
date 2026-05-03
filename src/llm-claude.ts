@@ -1,13 +1,6 @@
 /**
  * Anthropic Claude Messages API LLM client.
- *
- * Implements {@link LLMClient} against the Claude `/v1/messages` SSE
- * streaming protocol. Compatible with Claude 3.x / Claude 4 / Sonnet / Opus
- * and any proxy that speaks the same wire format.
- *
- * `baseUrl` is expected to already include `/v1` — the client appends
- * `/messages` and nothing else.
- *
+ * Implements {@link LLMClient} against Claude `/v1/messages` SSE protocol.
  * @see DESIGN.md § 3.3
  * @packageDocumentation
  */
@@ -23,9 +16,6 @@ import type {
   ToolSchema,
 } from './types.js';
 
-/**
- * Options for {@link ClaudeLLMClient}.
- */
 export interface ClaudeLLMClientOptions {
   /** Base URL already containing `/v1` (e.g. `https://api.anthropic.com/v1`). */
   readonly baseUrl: string;
@@ -50,50 +40,19 @@ export interface ClaudeLLMClientOptions {
   readonly anthropicVersion?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Message normalizer: OpenAI format → Claude format
-// ---------------------------------------------------------------------------
-
-interface ClaudeTextBlock {
-  readonly type: 'text';
-  readonly text: string;
-}
-
-interface ClaudeImageBlock {
-  readonly type: 'image';
-  readonly source:
-    | { readonly type: 'base64'; readonly media_type: string; readonly data: string }
-    | { readonly type: 'url'; readonly url: string };
-}
-
-interface ClaudeToolUseBlock {
-  readonly type: 'tool_use';
-  readonly id: string;
-  readonly name: string;
-  readonly input: unknown;
-}
-
-interface ClaudeToolResultBlock {
-  readonly type: 'tool_result';
-  readonly tool_use_id: string;
-  readonly content: string;
-}
+// --- Message normalizer: OpenAI → Claude ---
 
 type ClaudeContentBlock =
-  | ClaudeTextBlock
-  | ClaudeImageBlock
-  | ClaudeToolUseBlock
-  | ClaudeToolResultBlock;
+  | { readonly type: 'text'; readonly text: string }
+  | { readonly type: 'image'; readonly source:
+      | { readonly type: 'base64'; readonly media_type: string; readonly data: string }
+      | { readonly type: 'url'; readonly url: string } }
+  | { readonly type: 'tool_use'; readonly id: string; readonly name: string; readonly input: unknown }
+  | { readonly type: 'tool_result'; readonly tool_use_id: string; readonly content: string };
 
 interface ClaudeMessage {
   readonly role: 'user' | 'assistant';
   readonly content: readonly ClaudeContentBlock[];
-}
-
-interface ClaudeTool {
-  readonly name: string;
-  readonly description: string;
-  readonly input_schema: Record<string, unknown>;
 }
 
 /** Convert a single multipart entry to a Claude content block. */
@@ -207,10 +166,6 @@ function convertTools(tools: readonly ToolSchema[]): ClaudeTool[] {
   }));
 }
 
-// ---------------------------------------------------------------------------
-// Stop reason mapping
-// ---------------------------------------------------------------------------
-
 function mapStopReason(reason: string | undefined): string {
   switch (reason) {
     case 'end_turn':
@@ -223,10 +178,6 @@ function mapStopReason(reason: string | undefined): string {
       return reason ?? 'stop';
   }
 }
-
-// ---------------------------------------------------------------------------
-// Client implementation
-// ---------------------------------------------------------------------------
 
 export class ClaudeLLMClient implements LLMClient {
   private readonly opts: ClaudeLLMClientOptions;
