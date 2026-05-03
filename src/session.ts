@@ -114,13 +114,17 @@ export class Session implements SessionLike {
     }
 
     // 2) overflow check (pre-insert so users get told before we persist junk).
+    // Only short-circuit when policy is `reject`; truncate/summarize are
+    // handled inside AgentLoop on the next loop iteration.
     const used = await this.storage.countTokens(this.sessionId);
     if (used > this.config.contextMaxTokens) {
-      this.bus.emit('overflow_hit', { used, max: this.config.contextMaxTokens });
-      this.maybeInterlude('on_overflow_hit');
-      return noopTurnResult('overflow');
-    }
-    if (used > this.config.warningThreshold) {
+      if (this.config.onOverflow === 'reject') {
+        this.bus.emit('overflow_hit', { used, max: this.config.contextMaxTokens });
+        this.maybeInterlude('on_overflow_hit');
+        return noopTurnResult('overflow');
+      }
+      // truncate / summarize — fall through; AgentLoop will rescue.
+    } else if (used > this.config.warningThreshold) {
       this.bus.emit('overflow_warning', { used, max: this.config.contextMaxTokens });
       this.maybeInterlude('on_overflow_warning');
     }

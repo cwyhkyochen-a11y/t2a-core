@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.4.0 (WIP)
+
+### Features
+
+- **T1 `onOverflow: 'truncate'`**: AgentLoop 每轮开头检测 token → 保留 `compact.keepLastN`（默认 10）条尾部，剩下调 `Storage.truncateBefore` 删除，emit `overflow_truncated` 事件，继续本轮
+- **T2 `onOverflow: 'summarize'`**: AgentLoop 检测到超限 → 调 LLM 压缩旧消息（复用 compact 的 summarizer prompt）→ `Storage.replaceRange` 替换为 `compact_summary` system_event，emit `overflow_summarized` 事件，继续本轮
+- **Graceful fallback**: 若 storage 不支持 `truncateBefore` / `replaceRange`，或摘要 LLM 报错，自动降级为 `reject` + `system_notice`
+- **Session 集成**: `sendUserMessage` 只在 `onOverflow === 'reject'` 时短路；truncate/summarize 落到 AgentLoop 处理
+
+### Types
+
+- `SessionEvents.overflow_truncated: { removedCount, kept }`
+- `SessionEvents.overflow_summarized: { summary, originalCount, kept }`
+- `OverflowPolicy` 仍为 `'reject' | 'truncate' | 'summarize'`（类型不变，语义从占位落地为实现）
+
+### Tests
+
+- 13 new tests (`agent-loop-overflow.test.ts` / `session-overflow.test.ts`)
+- 105 tests total / lines 94.86% / branches 82.18% / functions 94.5%
+
+### Breaking Changes
+
+无（纯增量；旧 `onOverflow: 'reject'` 默认行为未变）
+
+---
+
 ## v0.2.0 (2026-05-02)
 
 ### Features

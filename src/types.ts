@@ -404,7 +404,16 @@ export interface DefaultInterludeProviderOptions {
 /**
  * Overflow strategy for `contextMaxTokens`.
  *
- * v0.1 only supports `'reject'`. `'truncate'` / `'summarize'` arrive in v0.5.
+ * - `reject`: Abort the turn with `finishReason: 'overflow'` (v0.1+).
+ * - `truncate`: Drop the oldest messages, keep `compact.keepLastN` recent ones,
+ *   continue the turn (v0.4+).
+ * - `summarize`: Summarize the oldest messages into a single
+ *   `system_event` row via the configured LLM, keep `compact.keepLastN`
+ *   recent ones, continue the turn (v0.4+).
+ *
+ * Truncate / summarize require `Storage.truncateBefore` / `Storage.replaceRange`
+ * respectively; otherwise the SDK falls back to `reject` and emits a
+ * `system_notice`.
  *
  * @see DESIGN.md § 3.6 / § 7
  */
@@ -639,6 +648,10 @@ export interface SessionEvents {
   compact_start: { readonly messageCount: number };
   /** T3: compact finished. */
   compact_done: { readonly summary: string; readonly originalCount: number; readonly kept: number };
+  /** v0.4 T1: overflow handled by truncating old messages. */
+  overflow_truncated: { readonly removedCount: number; readonly kept: number };
+  /** v0.4 T2: overflow handled by summarizing old messages. */
+  overflow_summarized: { readonly summary: string; readonly originalCount: number; readonly kept: number };
 }
 
 /**

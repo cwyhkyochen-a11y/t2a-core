@@ -92,6 +92,22 @@ export class AgentLoop {
       }
       loops += 1;
 
+      // Step 0: overflow handling (v0.4 T1/T2) — check tokens BEFORE building
+      // messages so truncate/summarize can mutate storage first.
+      const overflowHandled = await this.handleOverflow({
+        sessionId,
+        storage,
+        llm,
+        config,
+        bus,
+        abortSignal,
+        model,
+      });
+      if (overflowHandled === 'reject') {
+        finishReason = 'overflow';
+        break;
+      }
+
       // Step 1: build messages from storage.
       const history = await storage.loadMessages(sessionId);
       const messages = buildLLMMessages(history, systemPrompt, config.systemEventInjection, config.buildMessagesOptions);
@@ -186,6 +202,134 @@ export class AgentLoop {
       usage: accumulatedUsage,
       finishReason,
     };
+  }
+
+  /**
+   * v0.4 T1/T2: handle context overflow according to `config.onOverflow`.
+   *
+   * Returns:
+   * - `'continue'` when no overflow OR when overflow was handled in-place
+   *   (truncate / summarize) and the loop can proceed.
+   * - `'reject'` when policy is `reject` and the limit is hit, OR when the
+   *   storage adapter lacks the required optional method (graceful fallback).
+   */
+  private async handleOverflow(args: {
+    sessionId: string;
+    storage: Storage;
+    llm: LLMClient;
+    config: SessionConfig;
+    bus: EventBus;
+    abortSignal: AbortSignal;
+    model: string;
+  }): Promise<'continue' | 'reject'> {
+    const { sessionId, storage, llm, config, bus, abortSignal, model } = args;
+    const used = await storage.countTokens(sessionId);
+    const max = config.contextMaxTokens;
+    if (used <= max) return 'continue';
+
+    bus.emit('overflow_hit', { used, max });
+
+    if (config.onOverflow === 'reject') {
+      return 'reject';
+    }
+
+    const keepLastN = config.compact?.keepLastN ?? 10;
+    const history = await storage.loadMessages(sessionId);
+
+    // Nothing meaningful to drop — fall back to reject so the loop terminates.
+    if (history.length <= keepLastN) {
+      bus.emit('system_notice', {
+        code: 'overflow_no_room',
+        text: `上下文超限但可保留消息不足 ${keepLastN} 条，无法${config.onOverflow}，已 reject`,
+      });
+      return 'reject';
+    }
+
+    const toRemove = history.slice(0, history.length - keepLastN);
+    const cutoffId = toRemove[toRemove.length - 1]!.id;
+
+    if (config.onOverflow === 'truncate') {
+      if (!storage.truncateBefore) {
+        bus.emit('system_notice', {
+          code: 'overflow_truncate_unsupported',
+          text: '[t2a-core] Storage.truncateBefore not implemented; falling back to reject',
+        });
+        return 'reject';
+      }
+      // truncateBefore deletes rows with id <= cutoffId (semantics defined by
+      // the storage adapter; SDK contract: delete the contiguous oldest range).
+      await storage.truncateBefore(sessionId, cutoffId);
+      bus.emit('overflow_truncated', {
+        removedCount: toRemove.length,
+        kept: history.length - toRemove.length,
+      });
+      return 'continue';
+    }
+
+    // policy === 'summarize'
+    if (!storage.replaceRange) {
+      bus.emit('system_notice', {
+        code: 'overflow_summarize_unsupported',
+        text: '[t2a-core] Storage.replaceRange not implemented; falling back to reject',
+      });
+      return 'reject';
+    }
+
+    const summarizerPrompt =
+      config.compact?.summarizerSystemPrompt ??
+      '你是一个对话历史总结助手。请将以下对话历史压缩为简洁的摘要，保留关键信息和决策。';
+
+    const messagesToSummarize = toRemove
+      .map((m) => {
+        if (m.role === 'user') {
+          return `User: ${typeof m.content === 'string' ? m.content : '[multipart]'}`;
+        }
+        if (m.role === 'assistant') return `Assistant: ${m.content ?? '[tool_calls]'}`;
+        if (m.role === 'tool') return `Tool: ${m.content}`;
+        if (m.role === 'system_event') {
+          return `SystemEvent[${m.source}]: ${safeStringify(m.payload)}`;
+        }
+        return '';
+      })
+      .join('\n');
+
+    let summary = '';
+    try {
+      const stream = llm.chatStream({
+        model,
+        messages: [
+          { role: 'system', content: summarizerPrompt },
+          { role: 'user', content: messagesToSummarize },
+        ],
+        abortSignal,
+        maxTokens: 2000,
+      });
+      for await (const chunk of stream) {
+        if (abortSignal.aborted) break;
+        if (chunk.type === 'text') summary += chunk.delta;
+      }
+    } catch (err) {
+      bus.emit('error', { phase: 'overflow_summarize', error: toError(err) });
+      return 'reject';
+    }
+
+    const fromId = toRemove[0]!.id;
+    const toId = toRemove[toRemove.length - 1]!.id;
+    const summaryMsg = {
+      role: 'system_event' as const,
+      source: 'compact_summary',
+      payload: { summary, originalCount: toRemove.length },
+      defaultResponse: '',
+      triggerAgent: false,
+    };
+    await storage.replaceRange(sessionId, fromId, toId, summaryMsg);
+
+    bus.emit('overflow_summarized', {
+      summary,
+      originalCount: toRemove.length,
+      kept: history.length - toRemove.length,
+    });
+    return 'continue';
   }
 
   /**
