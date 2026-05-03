@@ -17,6 +17,8 @@ export { OpenAILLMClient } from './llm-openai.js';
 export type { OpenAILLMClientOptions } from './llm-openai.js';
 export { ClaudeLLMClient, normalizeMessages } from './llm-claude.js';
 export type { ClaudeLLMClientOptions } from './llm-claude.js';
+export { GeminiLLMClient, normalizeGeminiMessages } from './llm-gemini.js';
+export type { GeminiLLMClientOptions } from './llm-gemini.js';
 export { SQLiteStorage, defaultTokenCounter } from './storage-sqlite.js';
 export type {
   SQLiteStorageOptions,
