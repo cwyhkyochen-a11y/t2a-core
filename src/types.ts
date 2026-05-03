@@ -487,6 +487,14 @@ export interface SessionConfig {
   };
   /** Options forwarded to `buildLLMMessages`. */
   readonly buildMessagesOptions?: BuildLLMMessagesOptions;
+  /**
+   * v0.4 T5: resolved multi-LLM fallback policy. Always present in the
+   * resolved config.
+   */
+  readonly llmFallback: {
+    readonly timeoutMs: number;
+    readonly maxRetries: number;
+  };
 }
 
 // ============================================================================
@@ -561,11 +569,32 @@ export interface ToolRegistryLike {
 export interface SessionOptions {
   readonly sessionId: string;
   readonly storage: Storage;
-  readonly llm: LLMClient;
+  /**
+   * LLM client(s). Pass a single client for the legacy single-LLM behaviour,
+   * or an array of clients to enable multi-LLM fallback (T5).
+   */
+  readonly llm: LLMClient | readonly LLMClient[];
   readonly tools: ToolRegistryLike;
   readonly systemPrompt?: string;
   readonly config?: Partial<SessionConfig>;
   readonly interludeProvider?: InterludeProvider;
+  /**
+   * v0.4 T5: per-client fallback policy. Only meaningful when more than one
+   * `llm` client is provided, but the fields default sensibly for the
+   * single-client case as well.
+   */
+  readonly llmFallback?: {
+    /** Per-client request timeout in ms. Default 30000. */
+    readonly timeoutMs?: number;
+    /** Per-client retry attempts (1 = no retry). Default 1. */
+    readonly maxRetries?: number;
+  };
+  /**
+   * Optional model name(s). A single string applies to every LLM client; an
+   * array is zipped positionally with `llm` (shorter arrays reuse the last
+   * entry). When omitted, defaults to `'default'`.
+   */
+  readonly model?: string | readonly string[];
   /**
    * Optional pluggable transport. When supplied:
    * - selected session events (text, tool_start, tool_end, done, error,
@@ -661,6 +690,15 @@ export interface SessionEvents {
   overflow_truncated: { readonly removedCount: number; readonly kept: number };
   /** v0.4 T2: overflow handled by summarizing old messages. */
   overflow_summarized: { readonly summary: string; readonly originalCount: number; readonly kept: number };
+  /** v0.4 T5: a LLM client failed and the loop switched to the next one. */
+  llm_fallback: {
+    readonly fromIndex: number;
+    readonly toIndex: number;
+    readonly error: Error;
+    readonly model: string;
+  };
+  /** v0.4 T5: every configured LLM client failed. */
+  llm_exhausted: { readonly errors: readonly Error[] };
 }
 
 /**

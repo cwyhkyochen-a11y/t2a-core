@@ -30,17 +30,21 @@ import { EventBus } from './event-bus.js';
 
 /**
  * Input required to run a single loop invocation.
+ *
+ * T5 (v0.4): `llm` and `model` may be single values or arrays to enable
+ * fallback. The loop iterates through the array in order, treating each entry
+ * as an independent attempt with its own timeout / retry budget.
  */
 export interface AgentLoopContext {
   readonly sessionId: string;
   readonly storage: Storage;
-  readonly llm: LLMClient;
+  readonly llm: LLMClient | readonly LLMClient[];
   readonly tools: ToolRegistryLike;
   readonly systemPrompt: string;
   readonly config: SessionConfig;
   readonly bus: EventBus;
   readonly abortSignal: AbortSignal;
-  readonly model: string;
+  readonly model: string | readonly string[];
   /** Optional hook — called when loop wants to transition into streaming/tool_running. */
   readonly onState?: (state: 'thinking' | 'streaming' | 'tool_running') => void;
 }
@@ -72,6 +76,23 @@ export class AgentLoop {
       onState,
     } = ctx;
 
+    const llmClients: readonly LLMClient[] = Array.isArray(llm)
+      ? (llm as readonly LLMClient[])
+      : [llm as LLMClient];
+    if (llmClients.length === 0) {
+      throw new Error('[t2a-core] at least one LLM client is required');
+    }
+    const modelsArr: readonly string[] = Array.isArray(model)
+      ? (model as readonly string[])
+      : [model as string];
+    const models = llmClients.map(
+      (_, i) => modelsArr[i] ?? modelsArr[modelsArr.length - 1] ?? 'default',
+    );
+    // Prefer the explicit resolved fallback policy when SessionConfig already
+    // carries it (normal call path from Session); fall back to defaults so
+    // standalone AgentLoop callers (tests, advanced integrations) still work.
+    const fallback = config.llmFallback ?? { timeoutMs: 30000, maxRetries: 1 };
+
     let loops = 0;
     let toolCallsExecuted = 0;
     let accumulatedUsage: TokenUsage = {};
@@ -97,11 +118,11 @@ export class AgentLoop {
       const overflowHandled = await this.handleOverflow({
         sessionId,
         storage,
-        llm,
+        llm: llmClients[0]!,
         config,
         bus,
         abortSignal,
-        model,
+        model: models[0]!,
       });
       if (overflowHandled === 'reject') {
         finishReason = 'overflow';
@@ -112,18 +133,24 @@ export class AgentLoop {
       const history = await storage.loadMessages(sessionId);
       const messages = buildLLMMessages(history, systemPrompt, config.systemEventInjection, config.buildMessagesOptions);
 
-      // Step 2: stream LLM.
+      // Step 2: stream LLM (with T5 fallback across clients).
       onState?.('thinking');
-      const { text, toolCalls, usage, interrupted } = await this.streamOnce({
-        llm,
+      const streamResult = await this.streamWithFallback({
+        llmClients,
+        models,
+        fallback,
         bus,
         abortSignal,
         messages,
         tools,
-        model,
         maxTokens: config.contextMaxTokens,
         onFirstText: () => onState?.('streaming'),
       });
+      if (streamResult.exhausted) {
+        finishReason = 'error';
+        break;
+      }
+      const { text, toolCalls, usage, interrupted } = streamResult;
 
       mergeUsage(accumulatedUsage, usage);
 
@@ -333,8 +360,267 @@ export class AgentLoop {
   }
 
   /**
+   * v0.4 T5: Drive the LLM stream with multi-client fallback.
+   *
+   * Iterates `llmClients` left-to-right. Each entry gets `maxRetries` chances;
+   * each individual attempt is cancelled if the timeout fires before the first
+   * `text` / `tool_call_delta` chunk arrives.
+   *
+   * Returns either a successful stream result or an `exhausted` marker after
+   * `llm_exhausted` has been emitted.
+   */
+  private async streamWithFallback(args: {
+    llmClients: readonly LLMClient[];
+    models: readonly string[];
+    fallback: { readonly timeoutMs: number; readonly maxRetries: number };
+    bus: EventBus;
+    abortSignal: AbortSignal;
+    messages: OpenAIMessage[];
+    tools: ToolRegistryLike;
+    maxTokens: number;
+    onFirstText: () => void;
+  }): Promise<
+    | {
+        exhausted: false;
+        text: string;
+        toolCalls: ToolCall[];
+        usage: TokenUsage | undefined;
+        interrupted: boolean;
+      }
+    | { exhausted: true }
+  > {
+    const {
+      llmClients,
+      models,
+      fallback,
+      bus,
+      abortSignal,
+      messages,
+      tools,
+      onFirstText,
+    } = args;
+    const errors: Error[] = [];
+    const maxRetries = Math.max(1, fallback.maxRetries | 0);
+    const timeoutMs = Math.max(0, fallback.timeoutMs | 0);
+
+    for (let i = 0; i < llmClients.length; i += 1) {
+      const client = llmClients[i]!;
+      const model = models[i]!;
+
+      let lastErr: Error | null = null;
+      for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+        if (abortSignal.aborted) {
+          // User-driven interrupt: surface as a normal interrupted result so
+          // the caller can persist a partial assistant row.
+          return {
+            exhausted: false,
+            text: '',
+            toolCalls: [],
+            usage: undefined,
+            interrupted: true,
+          };
+        }
+
+        const outcome = await this.streamAttempt({
+          llm: client,
+          model,
+          bus,
+          userAbortSignal: abortSignal,
+          timeoutMs,
+          messages,
+          tools,
+          onFirstText,
+        });
+
+        if (outcome.kind === 'success') {
+          return {
+            exhausted: false,
+            text: outcome.text,
+            toolCalls: outcome.toolCalls,
+            usage: outcome.usage,
+            interrupted: outcome.interrupted,
+          };
+        }
+        // Failure / timeout — record and maybe retry.
+        lastErr = outcome.error;
+      }
+
+      const err = lastErr ?? new Error('[t2a-core] LLM client failed');
+      errors.push(err);
+
+      const nextIndex = i + 1;
+      if (nextIndex < llmClients.length) {
+        bus.emit('llm_fallback', {
+          fromIndex: i,
+          toIndex: nextIndex,
+          error: err,
+          model: models[nextIndex]!,
+        });
+      }
+    }
+
+    bus.emit('llm_exhausted', { errors });
+    bus.emit('error', {
+      phase: 'llm',
+      error: errors[errors.length - 1] ?? new Error('[t2a-core] all LLM clients failed'),
+    });
+    return { exhausted: true };
+  }
+
+  /**
+   * Single LLM attempt. Combines the user abort signal with a timeout abort
+   * (cleared on first useful chunk). Always returns an outcome; never throws
+   * for upstream errors.
+   */
+  private async streamAttempt(args: {
+    llm: LLMClient;
+    model: string;
+    bus: EventBus;
+    userAbortSignal: AbortSignal;
+    timeoutMs: number;
+    messages: OpenAIMessage[];
+    tools: ToolRegistryLike;
+    onFirstText: () => void;
+  }): Promise<
+    | {
+        kind: 'success';
+        text: string;
+        toolCalls: ToolCall[];
+        usage: TokenUsage | undefined;
+        interrupted: boolean;
+      }
+    | { kind: 'failure'; error: Error }
+  > {
+    const { llm, model, bus, userAbortSignal, timeoutMs, messages, tools, onFirstText } = args;
+    const openAITools = tools.toOpenAITools().map((t) => t.function);
+
+    // Internal merged controller — abort sources: user / timeout / inline error.
+    const innerAbort = new AbortController();
+    const userListener = (): void => innerAbort.abort();
+    if (userAbortSignal.aborted) {
+      innerAbort.abort();
+    } else {
+      userAbortSignal.addEventListener('abort', userListener, { once: true });
+    }
+
+    let timedOut = false;
+    const timeoutHandle: NodeJS.Timeout | null =
+      timeoutMs > 0
+        ? setTimeout(() => {
+            timedOut = true;
+            innerAbort.abort();
+          }, timeoutMs)
+        : null;
+    const cancelTimeout = (): void => {
+      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+    };
+
+    let text = '';
+    type ToolCallAcc = {
+      id?: string;
+      function?: { name: string; arguments: string };
+      argsBuf: string;
+    };
+    const toolCallsAcc = new Map<number, ToolCallAcc>();
+    let usage: TokenUsage | undefined;
+    let firstTextEmitted = false;
+    let firstChunkSeen = false;
+    let upstreamError: Error | null = null;
+
+    const markFirstChunk = (): void => {
+      if (!firstChunkSeen) {
+        firstChunkSeen = true;
+        cancelTimeout();
+      }
+    };
+
+    try {
+      const stream = llm.chatStream({
+        model,
+        messages,
+        ...(openAITools.length > 0 ? { tools: openAITools } : {}),
+        abortSignal: innerAbort.signal,
+      });
+
+      for await (const chunk of stream) {
+        if (innerAbort.signal.aborted) break;
+        handleChunk(chunk);
+      }
+    } catch (err) {
+      if (!innerAbort.signal.aborted) {
+        upstreamError = toError(err);
+      } else if (!userAbortSignal.aborted && !timedOut) {
+        // Inner aborted from the chunk-error path; treat as upstream failure.
+        upstreamError = toError(err);
+      }
+      // else: timed out or user abort — fall through to outcome dispatch.
+    } finally {
+      cancelTimeout();
+      userAbortSignal.removeEventListener('abort', userListener);
+    }
+
+    function handleChunk(chunk: ChatChunk): void {
+      switch (chunk.type) {
+        case 'text':
+          markFirstChunk();
+          if (!firstTextEmitted) {
+            firstTextEmitted = true;
+            onFirstText();
+          }
+          text += chunk.delta;
+          bus.emit('text', { delta: chunk.delta });
+          break;
+        case 'tool_call_delta': {
+          markFirstChunk();
+          const existing: ToolCallAcc = toolCallsAcc.get(chunk.index) ?? { argsBuf: '' };
+          if (chunk.id !== undefined) {
+            existing.id = chunk.id;
+          }
+          if (chunk.name !== undefined) {
+            existing.function = {
+              name: chunk.name,
+              arguments: existing.function?.arguments ?? '',
+            };
+          }
+          if (chunk.argsDelta !== undefined) {
+            existing.argsBuf += chunk.argsDelta;
+          }
+          toolCallsAcc.set(chunk.index, existing);
+          break;
+        }
+        case 'finish':
+          usage = chunk.usage;
+          break;
+        case 'error':
+          throw chunk.error;
+      }
+    }
+
+    // Decide outcome.
+    if (userAbortSignal.aborted) {
+      // User interrupt — surface partial as success+interrupted.
+      const toolCalls = collectToolCalls(toolCallsAcc);
+      return { kind: 'success', text, toolCalls, usage, interrupted: true };
+    }
+    if (timedOut && !firstChunkSeen) {
+      return {
+        kind: 'failure',
+        error: new Error(`[t2a-core] LLM stream timed out after ${timeoutMs}ms`),
+      };
+    }
+    if (upstreamError !== null) {
+      return { kind: 'failure', error: upstreamError };
+    }
+    const toolCalls = collectToolCalls(toolCallsAcc);
+    return { kind: 'success', text, toolCalls, usage, interrupted: false };
+  }
+
+  /**
    * Pump a single chat stream to completion (or abort). Accumulates text and
    * tool_call deltas; emits text events live.
+   *
+   * @deprecated v0.4 T5: kept for backward-compatible callers. New code should
+   * go through `streamWithFallback`.
    */
   private async streamOnce(args: {
     llm: LLMClient;
@@ -515,6 +801,33 @@ export class AgentLoop {
     }
     return out;
   }
+}
+
+function collectToolCalls(
+  acc: Map<
+    number,
+    {
+      id?: string;
+      function?: { name: string; arguments: string };
+      argsBuf: string;
+    }
+  >,
+): ToolCall[] {
+  const out: ToolCall[] = [];
+  const sorted = Array.from(acc.keys()).sort((a, b) => a - b);
+  for (const idx of sorted) {
+    const entry = acc.get(idx)!;
+    if (!entry.id || !entry.function?.name) continue;
+    out.push({
+      id: entry.id,
+      type: 'function',
+      function: {
+        name: entry.function.name,
+        arguments: entry.argsBuf || entry.function.arguments || '',
+      },
+    });
+  }
+  return out;
 }
 
 function mergeUsage(target: TokenUsage, incoming: TokenUsage | undefined): void {

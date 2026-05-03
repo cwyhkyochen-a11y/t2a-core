@@ -47,6 +47,10 @@ const DEFAULT_CONFIG: SessionConfig = {
   systemEventInjection: {
     template: defaultSystemEventTemplate,
   },
+  llmFallback: {
+    timeoutMs: 30000,
+    maxRetries: 1,
+  },
 };
 
 /**
@@ -67,7 +71,8 @@ export class Session implements SessionLike {
   private readonly model: string;
 
   private readonly storage: SessionOptions['storage'];
-  private readonly llm: SessionOptions['llm'];
+  private readonly llmClients: readonly import('./types.js').LLMClient[];
+  private readonly models: readonly string[];
   private readonly tools: SessionOptions['tools'];
   private readonly systemPrompt: string;
 
@@ -77,15 +82,29 @@ export class Session implements SessionLike {
   private readonly transport: Transport | null;
   private readonly transportUnsubs: Unsubscribe[] = [];
 
-  constructor(options: SessionOptions & { model?: string }) {
+  constructor(options: SessionOptions) {
     this.sessionId = options.sessionId;
     this.storage = options.storage;
-    this.llm = options.llm;
+    this.llmClients = Array.isArray(options.llm)
+      ? (options.llm as readonly import('./types.js').LLMClient[])
+      : [options.llm as import('./types.js').LLMClient];
+    if (this.llmClients.length === 0) {
+      throw new Error('[t2a-core] SessionOptions.llm must not be empty');
+    }
+    const modelOpt = options.model;
+    const modelsArr: readonly string[] = Array.isArray(modelOpt)
+      ? (modelOpt as readonly string[])
+      : modelOpt !== undefined
+        ? [modelOpt as string]
+        : ['default'];
+    this.models = this.llmClients.map(
+      (_, i) => modelsArr[i] ?? modelsArr[modelsArr.length - 1] ?? 'default',
+    );
     this.tools = options.tools;
     this.systemPrompt = options.systemPrompt ?? '';
-    this.config = mergeConfig(options.config);
+    this.config = mergeConfig(options.config, options.llmFallback);
+    this.model = this.models[0]!;
     this.interlude = options.interludeProvider ?? new DefaultInterludeProvider();
-    this.model = options.model ?? 'default';
     this.transport = options.transport ?? null;
     if (this.transport) this.wireTransport(this.transport);
   }
@@ -272,13 +291,13 @@ export class Session implements SessionLike {
       .run({
         sessionId: this.sessionId,
         storage: this.storage,
-        llm: this.llm,
+        llm: this.llmClients,
         tools: this.tools,
         systemPrompt: this.systemPrompt,
         config: this.config,
         bus: this.bus,
         abortSignal: controller.signal,
-        model: this.model,
+        model: this.models,
         onState: (s) => this.setState(s),
       })
       .then((result) => {
@@ -451,8 +470,8 @@ export class Session implements SessionLike {
     const abortController = new AbortController();
     let summary = '';
     try {
-      for await (const chunk of this.llm.chatStream({
-        model: this.model,
+      for await (const chunk of this.llmClients[0]!.chatStream({
+        model: this.models[0]!,
         messages: summaryMessages,
         abortSignal: abortController.signal,
         maxTokens: 2000,
@@ -485,20 +504,28 @@ export class Session implements SessionLike {
   }
 }
 
-function mergeConfig(partial?: Partial<SessionConfig>): SessionConfig {
-  if (!partial) return { ...DEFAULT_CONFIG };
+function mergeConfig(
+  partial?: Partial<SessionConfig>,
+  llmFallbackOverride?: { readonly timeoutMs?: number; readonly maxRetries?: number },
+): SessionConfig {
+  const base = partial ?? {};
   return {
     ...DEFAULT_CONFIG,
-    ...partial,
+    ...base,
     interrupt: {
       ...DEFAULT_CONFIG.interrupt,
-      ...(partial.interrupt ?? {}),
+      ...(base.interrupt ?? {}),
       // v0.1 decision 4: cancelPendingTools is force-false.
       cancelPendingTools: false,
     },
     systemEventInjection: {
       ...DEFAULT_CONFIG.systemEventInjection,
-      ...(partial.systemEventInjection ?? {}),
+      ...(base.systemEventInjection ?? {}),
+    },
+    llmFallback: {
+      ...DEFAULT_CONFIG.llmFallback,
+      ...(base.llmFallback ?? {}),
+      ...(llmFallbackOverride ?? {}),
     },
   };
 }

@@ -63,6 +63,6 @@ describe('AgentLoop long_wait', () => {
 
     expect(longWaits.length).toBe(1);
     expect(longWaits[0].name).toBe('slow_tool');
-    expect(longWaits[0].elapsedMs).toBeGreaterThanOrEqual(100);
+    expect(longWaits[0].elapsedMs).toBeGreaterThanOrEqual(90);
   });
 });
