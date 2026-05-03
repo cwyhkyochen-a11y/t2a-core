@@ -476,6 +476,8 @@ export interface SessionConfig {
     readonly keepLastN?: number;
     readonly summarizerSystemPrompt?: string;
   };
+  /** Options forwarded to `buildLLMMessages`. */
+  readonly buildMessagesOptions?: BuildLLMMessagesOptions;
 }
 
 // ============================================================================

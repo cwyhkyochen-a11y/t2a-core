@@ -94,7 +94,7 @@ export class AgentLoop {
 
       // Step 1: build messages from storage.
       const history = await storage.loadMessages(sessionId);
-      const messages = buildLLMMessages(history, systemPrompt, config.systemEventInjection);
+      const messages = buildLLMMessages(history, systemPrompt, config.systemEventInjection, config.buildMessagesOptions);
 
       // Step 2: stream LLM.
       onState?.('thinking');
