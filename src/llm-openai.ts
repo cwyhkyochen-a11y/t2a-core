@@ -88,6 +88,30 @@ function toTokenUsage(raw: OpenAIStreamingChunk['usage']): TokenUsage | undefine
   return Object.keys(usage).length > 0 ? usage : undefined;
 }
 
+/**
+ * Normalize multipart messages: convert internal camelCase `imageUrl` to
+ * OpenAI-expected snake_case `image_url`.
+ */
+export function normalizeOpenAIMessages(msgs: readonly any[]): any[] {
+  return msgs.map(msg => {
+    if (Array.isArray(msg.content)) {
+      return {
+        ...msg,
+        content: msg.content.map((part: any) => {
+          if (part.type === 'image_url' && part.imageUrl) {
+            return {
+              type: 'image_url',
+              image_url: { url: part.imageUrl.url },
+            };
+          }
+          return part;
+        }),
+      };
+    }
+    return msg;
+  });
+}
+
 function mapTools(
   tools: readonly ToolSchema[] | undefined,
 ): Array<{ type: 'function'; function: ToolSchema }> | undefined {
@@ -118,7 +142,7 @@ export class OpenAILLMClient implements LLMClient {
 
     const body: Record<string, unknown> = {
       model,
-      messages: input.messages,
+      messages: normalizeOpenAIMessages(input.messages),
       stream: true,
     };
     const tools = mapTools(input.tools);

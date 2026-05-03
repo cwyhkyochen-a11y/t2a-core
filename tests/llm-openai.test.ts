@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { OpenAILLMClient } from '../src/llm-openai.js';
+import { OpenAILLMClient, normalizeOpenAIMessages } from '../src/llm-openai.js';
 import type { ChatChunk, ChatStreamInput } from '../src/types.js';
 
 function sseStream(chunks: string[]): Response {
@@ -302,6 +302,39 @@ describe('OpenAILLMClient', () => {
     expect(chunks.find((c) => c.type === 'thinking')).toBeUndefined();
   });
 
+  // --- Multipart normalizer ---
+
+  it('normalizes camelCase imageUrl to snake_case image_url in request body', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(sseStream(['data: [DONE]\n\n']));
+    const client = new OpenAILLMClient({
+      baseUrl: 'https://api.test/v1',
+      apiKey: 'sk',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    await collect(
+      client.chatStream(
+        makeInput({
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'describe this' },
+                { type: 'image_url', imageUrl: { url: 'https://img.test/a.png' } },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    const body = JSON.parse(
+      (fetchImpl.mock.calls[0] as [string, RequestInit])[1].body as string,
+    );
+    expect(body.messages[0].content).toEqual([
+      { type: 'text', text: 'describe this' },
+      { type: 'image_url', image_url: { url: 'https://img.test/a.png' } },
+    ]);
+  });
+
   it('parseReasoning: true + reasoning field yields thinking chunk', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       sseStream([
@@ -320,5 +353,64 @@ describe('OpenAILLMClient', () => {
     const chunks = await collect(client.chatStream(makeInput()));
     expect(chunks[0]).toEqual({ type: 'thinking', delta: 'deep thought' });
     expect(chunks[1]).toEqual({ type: 'text', delta: 'result' });
+  });
+});
+
+describe('normalizeOpenAIMessages', () => {
+  it('converts imageUrl camelCase to image_url snake_case', () => {
+    const input = [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'hello' },
+          { type: 'image_url', imageUrl: { url: 'https://example.com/img.png' } },
+        ],
+      },
+    ];
+    const result = normalizeOpenAIMessages(input);
+    expect(result[0].content[0]).toEqual({ type: 'text', text: 'hello' });
+    expect(result[0].content[1]).toEqual({
+      type: 'image_url',
+      image_url: { url: 'https://example.com/img.png' },
+    });
+  });
+
+  it('passes through string content unchanged', () => {
+    const input = [{ role: 'user', content: 'just text' }];
+    const result = normalizeOpenAIMessages(input);
+    expect(result).toEqual(input);
+  });
+
+  it('passes through already-correct snake_case image_url', () => {
+    const input = [
+      {
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: 'https://example.com/img.png' } },
+        ],
+      },
+    ];
+    const result = normalizeOpenAIMessages(input);
+    expect(result[0].content[0]).toEqual({
+      type: 'image_url',
+      image_url: { url: 'https://example.com/img.png' },
+    });
+  });
+
+  it('handles multiple multipart messages', () => {
+    const input = [
+      { role: 'system', content: 'You are helpful.' },
+      {
+        role: 'user',
+        content: [
+          { type: 'image_url', imageUrl: { url: 'https://a.com/1.jpg' } },
+          { type: 'image_url', imageUrl: { url: 'https://a.com/2.jpg' } },
+        ],
+      },
+    ];
+    const result = normalizeOpenAIMessages(input);
+    expect(result[0]).toEqual({ role: 'system', content: 'You are helpful.' });
+    expect(result[1].content[0]).toEqual({ type: 'image_url', image_url: { url: 'https://a.com/1.jpg' } });
+    expect(result[1].content[1]).toEqual({ type: 'image_url', image_url: { url: 'https://a.com/2.jpg' } });
   });
 });
