@@ -145,12 +145,38 @@ export class Session implements SessionLike {
     if (used > this.config.contextMaxTokens) {
       if (this.config.onOverflow === 'reject') {
         this.bus.emit('overflow_hit', { used, max: this.config.contextMaxTokens });
+        // Store overflow_hit notice
+        await this.storage.appendMessage(this.sessionId, {
+          role: 'notice',
+          content: `上下文已超限（${used}/${this.config.contextMaxTokens}），执行 reject 策略`,
+          noticeType: 'overflow_hit',
+          ephemeral: true,
+          createdAt: Date.now(),
+        });
+        this.bus.emit('notice', {
+          type: 'overflow_hit',
+          text: `上下文已超限，执行 reject 策略`,
+          payload: { used, max: this.config.contextMaxTokens, strategy: 'reject' },
+        });
         this.maybeInterlude('on_overflow_hit');
         return noopTurnResult('overflow');
       }
       // truncate / summarize — fall through; AgentLoop will rescue.
     } else if (used > this.config.warningThreshold) {
       this.bus.emit('overflow_warning', { used, max: this.config.contextMaxTokens });
+      // Store overflow_warning notice
+      await this.storage.appendMessage(this.sessionId, {
+        role: 'notice',
+        content: `上下文接近上限（${used}/${this.config.contextMaxTokens}）`,
+        noticeType: 'overflow_warning',
+        ephemeral: true,
+        createdAt: Date.now(),
+      });
+      this.bus.emit('notice', {
+        type: 'overflow_warning',
+        text: `上下文接近上限（${used}/${this.config.contextMaxTokens}）`,
+        payload: { used, max: this.config.contextMaxTokens },
+      });
       this.maybeInterlude('on_overflow_warning');
     }
 
@@ -380,6 +406,7 @@ export class Session implements SessionLike {
         message: p.error?.message ?? String(p.error),
       })),
       this.bus.on('system_event_arrived', (p) => safeSend('system_event', p)),
+      this.bus.on('notice', (p) => safeSend('notice', p)),
       this.bus.on('interrupt', (p) => safeSend('interrupt', p)),
       this.bus.on('interlude', (p) => safeSend('interlude', p)),
       this.bus.on('state_change', (p) => safeSend('state_change', p)),
@@ -495,10 +522,25 @@ export class Session implements SessionLike {
 
     await this.storage.replaceRange(this.sessionId, fromId, toId, summaryMsg);
 
+    // Store compact notice into storage
+    await this.storage.appendMessage(this.sessionId, {
+      role: 'notice',
+      content: `已压缩 ${toCompact.length} 条历史消息`,
+      noticeType: 'compact_done',
+      ephemeral: true,
+      payload: { compactedCount: toCompact.length },
+      createdAt: Date.now(),
+    });
+
     this.bus.emit('compact_done', {
       summary,
       originalCount: toCompact.length,
       kept: kept.length,
+    });
+    this.bus.emit('notice', {
+      type: 'compact_done',
+      text: `已压缩 ${toCompact.length} 条历史消息`,
+      payload: { compactedCount: toCompact.length },
     });
     this.maybeInterlude('on_compact_done');
   }

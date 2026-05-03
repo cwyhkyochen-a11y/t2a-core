@@ -105,6 +105,47 @@ export interface SystemEventMessage {
   readonly createdAt: number;
 }
 
+// ============================================================================
+// § Notice messages (v0.6)
+// ============================================================================
+
+/**
+ * Notice sub-type for SDK internal notifications.
+ *
+ * Known types are listed explicitly; open-ended `(string & {})` allows
+ * extension without breaking the discriminant.
+ *
+ * @see DESIGN.md § Notice (v0.6)
+ */
+export type NoticeType =
+  | 'compact_done'
+  | 'overflow_warning'
+  | 'overflow_hit'
+  | 'fallback_switched'
+  | (string & {});
+
+/**
+ * Stored notice message — SDK-internal system notifications.
+ *
+ * Displayed to the user but **never** forwarded to the LLM context.
+ * `ephemeral` defaults to `true`; `buildLLMMessages` skips rows with
+ * `role === 'notice'` or `ephemeral === true`.
+ *
+ * @see DESIGN.md § Notice (v0.6)
+ */
+export interface NoticeMessage {
+  readonly role: 'notice';
+  /** Human-readable notification text. */
+  readonly content: string;
+  /** Notice sub-type classifier. */
+  readonly noticeType?: NoticeType;
+  /** When true, `buildLLMMessages` will skip this message. Always true for notices. */
+  readonly ephemeral?: boolean;
+  /** Optional structured data attached to the notice. */
+  readonly payload?: unknown;
+  readonly createdAt: number;
+}
+
 /**
  * Discriminated union of all stored message variants.
  *
@@ -114,7 +155,8 @@ export type StoredMessage =
   | UserMessage
   | AssistantMessage
   | ToolMessage
-  | SystemEventMessage;
+  | SystemEventMessage
+  | NoticeMessage;
 
 /** Alias kept for ergonomic imports. @see DESIGN.md Appendix A */
 export type Message = StoredMessage;
@@ -700,6 +742,8 @@ export interface SessionEvents {
   };
   /** v0.4 T5: every configured LLM client failed. */
   llm_exhausted: { readonly errors: readonly Error[] };
+  /** v0.6: SDK internal notice for user display only (not sent to LLM). */
+  notice: { readonly type: NoticeType; readonly text: string; readonly payload?: unknown };
 }
 
 /**
@@ -751,6 +795,7 @@ export interface TransportEvent {
     | 'done'
     | 'error'
     | 'system_event'
+    | 'notice'
     | (string & {});
   readonly payload: unknown;
 }

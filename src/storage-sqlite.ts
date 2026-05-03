@@ -87,7 +87,7 @@ export interface SQLiteStorageOptions {
 interface MessageRow {
   id: number;
   session_id: string;
-  role: 'user' | 'assistant' | 'tool' | 'system_event';
+  role: 'user' | 'assistant' | 'tool' | 'system_event' | 'notice';
   content: string | null;
   content_type: string;
   tool_calls: string | null;
@@ -242,6 +242,20 @@ export class SQLiteStorage implements Storage {
       eventPayload = JSON.stringify(stored.payload ?? null);
       eventDefaultResponse = stored.defaultResponse ?? null;
       eventTriggerAgent = stored.triggerAgent ? 1 : 0;
+    } else if (stored.role === 'notice') {
+      contentStr = stored.content;
+    }
+
+    // Build meta JSON for notice-specific fields.
+    let metaJson: string | null = null;
+    if (stored.role === 'notice') {
+      const metaObj: Record<string, unknown> = {};
+      if (stored.noticeType !== undefined) metaObj.noticeType = stored.noticeType;
+      if (stored.ephemeral !== undefined) metaObj.ephemeral = stored.ephemeral;
+      if (stored.payload !== undefined) metaObj.payload = stored.payload;
+      if (Object.keys(metaObj).length > 0) {
+        metaJson = JSON.stringify(metaObj);
+      }
     }
 
     const tx = this.db.transaction(((): void => {
@@ -253,8 +267,8 @@ export class SQLiteStorage implements Storage {
           `INSERT INTO ${this.messagesTbl}
             (session_id, role, content, content_type, tool_calls, tool_call_id,
              event_source, event_payload, event_default_response, event_trigger_agent,
-             token_count, interrupted, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(?, 'unixepoch', 'localtime'))`,
+             token_count, interrupted, meta, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(?, 'unixepoch', 'localtime'))`,
         )
         .run(
           sessionId,
@@ -269,6 +283,7 @@ export class SQLiteStorage implements Storage {
           eventTriggerAgent,
           tokens,
           interrupted,
+          metaJson,
           Math.floor(createdAt / 1000),
         );
       this.db
@@ -384,6 +399,25 @@ export class SQLiteStorage implements Storage {
         content: r.content ?? '',
         createdAt,
       } as StoredMessageWithId;
+    }
+    if (r.role === 'notice') {
+      const out: Record<string, unknown> = {
+        id: r.id,
+        role: 'notice',
+        content: r.content ?? '',
+        createdAt,
+      };
+      if (r.meta) {
+        try {
+          const meta = JSON.parse(r.meta) as Record<string, unknown>;
+          if (meta.noticeType !== undefined) out.noticeType = meta.noticeType;
+          if (meta.ephemeral !== undefined) out.ephemeral = meta.ephemeral;
+          if (meta.payload !== undefined) out.payload = meta.payload;
+        } catch {
+          // ignore malformed meta
+        }
+      }
+      return out as unknown as StoredMessageWithId;
     }
     // system_event
     let payload: unknown = null;

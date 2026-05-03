@@ -456,6 +456,12 @@ export class AgentLoop {
           error: err,
           model: models[nextIndex]!,
         });
+        // Emit notice for fallback switch (transient, not persisted)
+        bus.emit('notice', {
+          type: 'fallback_switched',
+          text: `已切换到备用模型`,
+          payload: { fromIndex: i, toIndex: nextIndex },
+        });
       }
     }
 

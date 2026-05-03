@@ -119,18 +119,23 @@ export function buildLLMMessages(
   injection: SystemEventInjectionConfig = { template: defaultSystemEventTemplate },
   options?: BuildLLMMessagesOptions,
 ): OpenAIMessage[] {
+  // Filter out notice/ephemeral messages before any processing.
+  const filtered = stored.filter(
+    (m) => m.role !== 'notice' && !('ephemeral' in m && (m as { ephemeral?: boolean }).ephemeral),
+  );
+
   const degrade = options?.degradeHistoryTools ?? false;
 
   if (!degrade) {
-    return buildLegacy(stored, systemPrompt, injection);
+    return buildLegacy(filtered, systemPrompt, injection);
   }
 
   const offsetMin = options?.timezoneOffsetMinutes ?? 480;
 
-  // Find boundary: last user or system_event index in stored
+  // Find boundary: last user or system_event index in filtered
   let boundary = -1;
-  for (let i = stored.length - 1; i >= 0; i--) {
-    const r = stored[i]!;
+  for (let i = filtered.length - 1; i >= 0; i--) {
+    const r = filtered[i]!;
     if (r.role === 'user' || r.role === 'system_event') {
       boundary = i;
       break;
@@ -140,7 +145,7 @@ export function buildLLMMessages(
   // Build toolCallId → name map for history region
   const toolCallMap = new Map<string, string>();
   for (let i = 0; i < boundary; i++) {
-    const m = stored[i]!;
+    const m = filtered[i]!;
     if (m.role === 'assistant' && m.toolCalls) {
       for (const tc of m.toolCalls) {
         toolCallMap.set(tc.id, tc.function.name);
@@ -153,8 +158,8 @@ export function buildLLMMessages(
     out.push({ role: 'system', content: systemPrompt });
   }
 
-  for (let i = 0; i < stored.length; i++) {
-    const msg = stored[i]!;
+  for (let i = 0; i < filtered.length; i++) {
+    const msg = filtered[i]!;
     const ts = formatTimestamp(msg.createdAt, offsetMin);
     const isHistory = i < boundary;
 

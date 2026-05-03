@@ -35,6 +35,7 @@ const INTERNAL_EVENT_NAMES: ReadonlySet<keyof SessionEvents> = new Set<keyof Ses
   'overflow_summarized',
   'llm_fallback',
   'llm_exhausted',
+  'notice',
 ]);
 
 function isInternalEvent(name: string): name is keyof SessionEvents {
