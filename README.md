@@ -105,6 +105,49 @@ SDK calls the LLM to summarize older messages, replaces them with a `compact_sum
 
 Built-in "interludes" (human-friendly messages) with 7 tone buckets. Override with your own.
 
+### 7. Multi-LLM Fallback (v0.4)
+
+Provide multiple LLM clients — if the primary times out or errors, the SDK automatically switches to the next one:
+
+```ts
+import { OpenAILLMClient } from '@t2a/core';
+
+const session = new Session({
+  sessionId: 'demo-001',
+  storage: myStorage,
+  tools,
+  systemPrompt: 'You are a helpful assistant.',
+
+  // Multiple providers — SDK tries in order
+  llm: [
+    new OpenAILLMClient({ baseUrl: 'https://mimo-api.com/v1', apiKey: 'key1' }),
+    new OpenAILLMClient({ baseUrl: 'https://api.deepseek.com/v1', apiKey: 'key2' }),
+    new OpenAILLMClient({ baseUrl: 'https://api.openai.com/v1', apiKey: 'key3' }),
+  ],
+  model: ['mimo-v2.5-pro', 'deepseek-v4', 'gpt-4o'],
+
+  // Fallback behavior
+  llmFallback: {
+    timeoutMs: 15000,   // 15s per client before switching
+    maxRetries: 1,      // no retry, switch immediately
+  },
+});
+
+// Know when fallback happens
+session.on('llm_fallback', ({ fromIndex, toIndex, model, error }) => {
+  console.log(`Provider ${fromIndex} failed: ${error.message}, switching to ${model}`);
+});
+
+// Know when all providers are down
+session.on('llm_exhausted', ({ errors }) => {
+  console.error('All LLM providers failed:', errors.map(e => e.message));
+});
+```
+
+**Timeout behavior:** The timer starts when the request is sent. Once the first chunk arrives (stream started), the timeout is cancelled — a slow but streaming response won't be killed.
+
+**Single client still works:** `llm: singleClient` (no array) behaves exactly as before. Fallback config is simply ignored.
+
 ## Quick Start
 
 ```ts
@@ -213,7 +256,8 @@ These are provided as starting points. For production, implement the interfaces 
 | v0.1.0 | Core SDK — Session, AgentLoop, ToolRegistry, EventBus, Interlude | ✅ |
 | v0.2.0 | Stream interruption, `/compact`, long_wait, overflow sanity | ✅ |
 | v0.3.0 | OpenAILLMClient + SQLiteStorage reference impls, buildLLMMessages enhancements | ✅ |
-| v0.4.0 | Multi-LLM normalizer, advanced truncation/summarize overflow, Transport abstraction | — |
+| v0.4.0 | Overflow strategies (truncate/summarize), Transport interface, Multi-LLM fallback | ✅ |
+| v0.5.0 | Claude/Gemini native LLMClient, multi-modal normalizer | — |
 
 ## Install
 
