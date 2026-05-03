@@ -213,8 +213,7 @@ These are provided as starting points. For production, implement the interfaces 
 | v0.1.0 | Core SDK — Session, AgentLoop, ToolRegistry, EventBus, Interlude | ✅ |
 | v0.2.0 | Stream interruption, `/compact`, long_wait, overflow sanity | ✅ |
 | v0.3.0 | OpenAILLMClient + SQLiteStorage reference impls, buildLLMMessages enhancements | ✅ |
-| v0.4.0 | Transport interface abstraction, second adapter validation | — |
-| v0.5+ | Multi-LLM normalizer, advanced truncation strategies | — |
+| v0.4.0 | Multi-LLM normalizer, advanced truncation/summarize overflow, Transport abstraction | — |
 
 ## Install
 
@@ -222,7 +221,7 @@ These are provided as starting points. For production, implement the interfaces 
 npm install @t2a/core
 ```
 
-> **Note:** Not yet published to npm. Coming soon with v0.3.x release.
+
 
 ## License
 

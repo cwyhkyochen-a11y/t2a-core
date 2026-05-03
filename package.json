@@ -1,6 +1,6 @@
 {
   "name": "@t2a/core",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "publishConfig": {
     "access": "public"
   },
@@ -45,12 +45,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kyochen/t2a-core.git"
+    "url": "git+https://github.com/cwyhkyochen-a11y/t2a-core.git"
   },
   "bugs": {
-    "url": "https://github.com/kyochen/t2a-core/issues"
+    "url": "https://github.com/cwyhkyochen-a11y/t2a-core/issues"
   },
-  "homepage": "https://github.com/kyochen/t2a-core#readme",
+  "homepage": "https://github.com/cwyhkyochen-a11y/t2a-core#readme",
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",
     "@types/node": "^20.11.0",

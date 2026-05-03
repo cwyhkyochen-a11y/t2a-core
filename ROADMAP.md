@@ -62,20 +62,7 @@
 
 ---
 
-## v0.4.0 — 第二个 adapter（demo MDM）
-
-**范围**：
-
-- [ ] 新建 `projects/t2a-mdm-demo`：员工 + 岗位 + 部门三表 + 模拟数据
-- [ ] 工具：`query_employee` / `query_position` / `query_org_tree` / `update_employee`
-- [ ] 监听 mock 的 mdm 变更事件 → push system_event
-- [ ] 一个最简前端（vanilla HTML + EventSource）演示主动推送
-
-**目的**：证明 t2a-core 能在不同业务复用，不是只为 imagine 量身定做。
-
----
-
-## v0.5+ — 上下文策略增强
+## v0.4.0 — 上下文策略增强 + Transport 抽象
 
 **范围**：
 
@@ -84,6 +71,7 @@
 - [ ] 多 LLM fallback：主厂商挂了自动切备用
 - [ ] LLMClient 支持非 OpenAI 协议（Claude native / Gemini native）
 - [ ] 多模态 normalizer：自动把 OpenAI image_url 转 Claude / Gemini 格式
+- [ ] Transport 接口抽象（WebSocket / SSE / HTTP 通用）
 
 ---
 
