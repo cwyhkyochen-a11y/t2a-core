@@ -78,7 +78,7 @@ interface NormalizerResult {
 }
 
 function inferMimeType(url: string): string {
-  const ext = url.split('?')[0].split('.').pop()?.toLowerCase();
+  const ext = url.split('?')[0]!.split('.').pop()?.toLowerCase();
   switch (ext) {
     case 'png': return 'image/png';
     case 'gif': return 'image/gif';
@@ -93,7 +93,7 @@ function convertMultiPart(part: MultiPart): GeminiPart {
   const url = part.imageUrl.url;
   const dataUriMatch = url.match(/^data:(image\/[^;]+);base64,(.+)$/s);
   if (dataUriMatch) {
-    return { inlineData: { mimeType: dataUriMatch[1], data: dataUriMatch[2] } };
+    return { inlineData: { mimeType: dataUriMatch[1]!, data: dataUriMatch[2]! } };
   }
   return { fileData: { mimeType: inferMimeType(url), fileUri: url } };
 }

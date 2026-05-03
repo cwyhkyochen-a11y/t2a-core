@@ -65,14 +65,14 @@ function convertMultiPart(part: MultiPart): ClaudeContentBlock {
   if (dataUriMatch) {
     return {
       type: 'image',
-      source: { type: 'base64', media_type: dataUriMatch[1], data: dataUriMatch[2] },
+      source: { type: 'base64', media_type: dataUriMatch[1]!, data: dataUriMatch[2]! },
     };
   }
   return { type: 'image', source: { type: 'url', url } };
 }
 
 /** Convert assistant tool_calls to Claude tool_use blocks. */
-function convertToolCalls(calls: readonly ToolCall[]): ClaudeToolUseBlock[] {
+function convertToolCalls(calls: readonly ToolCall[]): ClaudeContentBlock[] {
   return calls.map((tc) => ({
     type: 'tool_use' as const,
     id: tc.id,
@@ -100,7 +100,7 @@ interface NormalizerResult {
  */
 export function normalizeMessages(msgs: readonly OpenAIMessage[]): NormalizerResult {
   let system: string | undefined;
-  const out: ClaudeMessage[] = [];
+  const out: { role: 'user' | 'assistant'; content: ClaudeContentBlock[] }[] = [];
 
   for (const m of msgs) {
     if (m.role === 'system') {
@@ -142,19 +142,22 @@ export function normalizeMessages(msgs: readonly OpenAIMessage[]): NormalizerRes
 
 /** Push content blocks, merging with the last message if same role. */
 function pushMerged(
-  out: ClaudeMessage[],
+  out: { role: 'user' | 'assistant'; content: ClaudeContentBlock[] }[],
   role: 'user' | 'assistant',
   content: ClaudeContentBlock[],
 ): void {
   const last = out[out.length - 1];
   if (last && last.role === role) {
-    (out[out.length - 1] as { content: ClaudeContentBlock[] }).content = [
-      ...last.content,
-      ...content,
-    ];
+    last.content = [...last.content, ...content];
   } else {
     out.push({ role, content });
   }
+}
+
+interface ClaudeTool {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
 }
 
 /** Convert SDK `ToolSchema[]` to Claude tools format. */
