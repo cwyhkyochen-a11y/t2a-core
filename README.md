@@ -3,9 +3,9 @@
 > `@t2a/core` · **Talk-to-Action Conversation Kernel**
 
 <p align="left">
-  <a href="https://github.com/cwyhkyochen-a11y/t2a-core/releases"><img alt="version" src="https://img.shields.io/badge/version-v0.3.0-blue"></a>
+  <a href="https://github.com/cwyhkyochen-a11y/t2a-core/releases"><img alt="version" src="https://img.shields.io/badge/version-v0.4.0-blue"></a>
   <a href="./LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
-  <img alt="tests" src="https://img.shields.io/badge/tests-92%20passed-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-129%20passed-brightgreen">
   <img alt="coverage" src="https://img.shields.io/badge/coverage-92%25-brightgreen">
   <img alt="deps" src="https://img.shields.io/badge/runtime%20deps-0-blueviolet">
 </p>
