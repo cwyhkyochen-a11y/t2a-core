@@ -14,26 +14,98 @@
 
 ## What is t2a-core?
 
-A TypeScript SDK that turns LLM conversations into **action-driven agents**. Instead of simple request-response chat, t2a-core gives you a session kernel where:
+A TypeScript SDK that models LLM conversations as a **group chat between Human, AI, and Systems**.
 
-- External systems can **push events into a conversation** without waiting for user input
-- Tools can run **asynchronously** — fire and forget, results flow back when ready
-- Users can **interrupt** the AI mid-stream without losing context
-- The session **self-manages** token limits with built-in compression
+Traditional chat: User asks → AI answers (maybe calls a tool).
+t2a-core: **One user, one AI, N systems — all first-class participants in a shared session timeline.**
 
-Zero runtime dependencies. Pure interfaces for Storage, LLM, and Transport — bring your own implementation.
+```
+User (operator)
+    ↕
+  LLM (coordinator)
+    ↕         ↕         ↕
+System A   System B   System C
+ (ERP)      (CRM)      (WMS)
+```
 
-## Why not Vercel AI SDK / LangChain / OpenAI Agents SDK?
+The operator speaks naturally. The AI translates intent into system operations. Each system pushes results back as events. The AI synthesizes and responds. **No tab-switching, no form-filling, no polling.**
+
+### Core design:
+- **Three-role model** — `user` / `assistant` / `system_event` as first-class message roles
+- **Async-by-event** — systems push events into the session anytime; AI reacts without waiting for user input
+- **Stream interruption** — user interrupts AI mid-sentence; partial output is persisted, context preserved
+- **Self-managing context** — built-in `/compact`, overflow detection, and sanity interludes
+- **Zero runtime dependencies** — pure interfaces for Storage, LLM, and Transport
+
+### Target scenario:
+
+**Single user + Multiple systems + Single LLM** — the next interaction paradigm for complex systems.
+
+Users shouldn't need to know how many systems exist behind an app, or learn each system's UI. They express intent in one conversation; the AI coordinates everything.
+
+- **C-end user:** "Book tomorrow's train to Shanghai, then call a car to the hotel" → train API + ride-hailing + hotel system
+- **Operations staff:** "Refund order #12345, adjust inventory, notify the customer" → ERP + WMS + CRM
+- **Enterprise user:** "Summarize this quarter's sales, compare with last year, draft a report" → BI + docs + email
+
+Same model: **one human, one AI, N systems — one session.**
+
+## Why a "group chat" kernel?
+
+Existing frameworks already handle **tool use** well — user speaks, AI calls tools, tools return results. That's a solved problem.
+
+What they **can't** do: **systems pushing events to the AI without user initiation.**
+
+```
+━━ Tool Use (every framework does this) ━━━━━━━━━━━━━━━━━━━━━━━━━
+
+User: "Check my delivery status"            ← user initiates
+AI → logistics API → result → AI replies    ← tool is passive
+
+━━ System Event (only t2a-core) ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Logistics system: "Package delivered"        ← system initiates
+AI → User: "Your package just arrived!       ← AI reacts without user input
+            Want me to schedule a pickup?"
+```
+
+This is the **group chat** paradigm: systems are active participants, not passive tools. They can speak whenever they have something to say.
+
+Real-world examples of system-initiated events:
+- 📦 Delivery arrived → AI proactively notifies user
+- 💰 Payment confirmed → AI starts order processing
+- ⚠️ Inventory alert → AI warns operations staff
+- 🖼️ Image generation done → AI delivers the result
+- 📅 Calendar reminder → AI nudges user about upcoming event
+
+None of these require the user to say anything first.
 
 | | t2a-core | Typical frameworks |
 |---|---|---|
+| **Mental model** | Group chat (user + AI + N systems) | 1:1 chat (user ↔ AI, tools are sub-calls) |
+| **External events** | `pushSystemEvent()` — any system injects events anytime, AI reacts | Must poll, or user sends another message |
 | **Three-role model** | `user` / `assistant` / `system_event` as first-class roles | Events crammed into `user` or `system` |
-| **Async task writeback** | Tool fires async task → `pushSystemEvent()` triggers agent response when done | Must poll, or user has to send another message |
-| **Stream interruption** | Partial output persisted with `interrupted=true`, next turn LLM sees where it stopped | Abort = lost context |
-| **Built-in compression** | `/compact` command + `session.compact()` API, LLM summarizes history automatically | DIY |
-| **Sanity events** | `long_wait` / `overflow_warning` / `overflow_hit` with human-friendly interludes | No UX for slow tools or token limits |
-| **Runtime dependencies** | **0** | Transitive dependency trees |
+| **Async task writeback** | Tool fires async task → result flows back as system_event → AI responds | Synchronous tool calls block the conversation |
+| **Stream interruption** | Partial output persisted with `interrupted=true`, LLM sees where it stopped | Abort = lost context |
+| **Built-in compression** | `/compact` + `session.compact()`, LLM summarizes history automatically | DIY |
+| **Sanity events** | `long_wait` / `overflow_warning` / `overflow_hit` with friendly interludes | No UX for slow tools or token limits |
+| **Runtime deps** | **0** | Transitive dependency trees |
 | **Vendor lock-in** | All interfaces — swap Storage/LLM/Transport freely | Often tied to specific providers |
+
+## How is this different from LangGraph?
+
+[LangGraph](https://github.com/langchain-ai/langgraph) is a workflow orchestration framework (DAG + checkpoints). It's the closest project in terms of ambition:
+
+| | t2a-core | LangGraph |
+|---|---|---|
+| **Mental model** | Group chat timeline | Workflow graph (nodes + edges) |
+| **Interrupt** | `session.interrupt()` — cuts LLM stream, partial output persisted, next turn continues naturally | `interrupt(value)` — throws exception, pauses graph; resume **replays the node function from the start** |
+| **Resume semantics** | True conversation continuation — LLM sees its partial output | Function replay + value injection — same code re-runs, `interrupt()` returns the resume value |
+| **External events** | `pushSystemEvent()` — first-class, any system pushes anytime | `update_state()` + manual resume — essentially "mutate state then kick" |
+| **Token management** | Built-in `/compact` + overflow detection | None built-in |
+| **Language** | TypeScript, 0 deps | Python-first (JS version exists but weaker ecosystem) |
+| **Best for** | Conversational agents coordinating multiple systems | Multi-step approval workflows, DAG orchestration |
+
+**In one line:** LangGraph orchestrates agents as **workflow graphs**. t2a-core drives agents as **group chat participants**.
 
 ## How is this different from pi-agent-core?
 
@@ -262,10 +334,30 @@ const gemini = new GeminiLLMClient({
 
 ## Use Cases
 
-- **AI generation tools** — image/video generation takes 60-120s; push results back to the agent when ready
-- **Internal platforms** — approval flows, employee onboarding events, data changes trigger conversational updates
+### Primary: Conversational Interface to Complex Systems
+
+Replace "learn N different UIs" with one natural-language session:
+
+```
+User: "帮我订明天去上海的高铁，到了之后叫个车去酒店"
+
+AI → Train API: search & book        → [system_event: ticket_booked]
+AI → Ride-hailing: schedule pickup   → [system_event: ride_scheduled]
+AI → Hotel: confirm reservation       → [system_event: hotel_confirmed]
+
+AI: "已订明早 8:30 G1234 次高铁，12:05 到上海虹桥站。
+    已预约接站专车，送往和平饶店（已确认入住）。"
+```
+
+Each system reports back asynchronously. The AI synthesizes all results. The user never leaves the chat.
+
+### Works for everyone:
+
+- **C-end users** — book travel, manage subscriptions, cross-app workflows through one conversation
+- **Operations staff** — refunds + inventory + notifications across ERP/CRM/WMS in one command
+- **Enterprise users** — pull data from BI, draft reports, send emails — all in one session
+- **AI generation tools** — image/video generation takes 60-120s; results push back when ready
 - **IoT / device control** — sensor events interrupt or inform ongoing conversations
-- **Long-running customer service** — order status changes mid-conversation without losing context
 
 ## Documentation
 
