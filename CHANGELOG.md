@@ -35,3 +35,30 @@
 - 6 核心模块：Session / EventBus / ToolRegistry / AgentLoop / MessageBuilder / InterludeProvider
 - 45 tests / 92.79% lines / 80.42% branches
 - 设计文档 6 份 ≈ 1608 行
+
+## v0.3.0 (2026-05-03)
+
+### Features
+
+- **A1 OpenAILLMClient**: 参考实现，兼容 OpenAI `/v1/chat/completions` stream 协议（MiMo/GPT/DeepSeek/Kimi/GLM 通用）
+- **A2 SQLiteStorage**: 参考实现，`better-sqlite3` peer dep，支持自定义表名
+- **方案 C — buildLLMMessages 改造**: 当前轮保持原生 tool_calls，历史降级为时间戳文本；`degradeHistoryTools` + `timezoneOffsetMinutes` 配置
+- **SessionConfig.buildMessagesOptions**: agent-loop 自动透传给 buildLLMMessages
+
+### Types
+
+- `BuildLLMMessagesOptions` 接口（`degradeHistoryTools` / `timezoneOffsetMinutes`）
+- `SessionConfig.buildMessagesOptions?: BuildLLMMessagesOptions`
+
+### Tests
+
+- 92 tests (10 test files)
+- Coverage: lines ≥92% / branches ≥78%
+
+### Breaking Changes
+
+无（`buildLLMMessages` 第 4 参数可选，不传行为不变）
+
+### First Adapter
+
+- imagine v2.6.0 完整集成验证通过（chat 内核全换 + WebSocket + 异步推送）
