@@ -1,59 +1,111 @@
 # t2a-core
 
-> npm 包名：`@t2a/core` · 仓库：`t2a-core`
->
-> **Talk-to-Action 内核 SDK** —— 把 LLM 对话从"问答机器"升级成真正能听、能干、还能被外部世界主动敲门的协同体。
+> `@t2a/core` · **Talk-to-Action Conversation Kernel**
 
 <p align="left">
-  <a href="https://github.com/cwyhkyochen-a11y/t2a-core/releases"><img alt="version" src="https://img.shields.io/badge/version-v0.2.0-blue"></a>
+  <a href="https://github.com/cwyhkyochen-a11y/t2a-core/releases"><img alt="version" src="https://img.shields.io/badge/version-v0.3.0-blue"></a>
   <a href="./LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
-  <img alt="tests" src="https://img.shields.io/badge/tests-49%20passed-brightgreen">
-  <img alt="coverage" src="https://img.shields.io/badge/coverage-92.8%25-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-92%20passed-brightgreen">
+  <img alt="coverage" src="https://img.shields.io/badge/coverage-92%25-brightgreen">
   <img alt="deps" src="https://img.shields.io/badge/runtime%20deps-0-blueviolet">
 </p>
 
 ---
 
-## 一句话定位
+## What is t2a-core?
 
-**把 imagine、MDM、内部工作台这类产品里"反复在写的那段 LLM 编排逻辑"沉淀下来**，业务只实现 `Storage` / `LLMClient` / `Tool` 三个接口，就得到一个完整的、可中断、可异步回写、会自我预警的 agent 会话内核。
+A TypeScript SDK that turns LLM conversations into **action-driven agents**. Instead of simple request-response chat, t2a-core gives you a session kernel where:
 
-## 为什么不用现成的 Vercel AI SDK / LangChain / agents-sdk？
+- External systems can **push events into a conversation** without waiting for user input
+- Tools can run **asynchronously** — fire and forget, results flow back when ready
+- Users can **interrupt** the AI mid-stream without losing context
+- The session **self-manages** token limits with built-in compression
 
-|  | t2a-core | 常见选手 |
+Zero runtime dependencies. Pure interfaces for Storage, LLM, and Transport — bring your own implementation.
+
+## Why not Vercel AI SDK / LangChain / OpenAI Agents SDK?
+
+| | t2a-core | Typical frameworks |
 |---|---|---|
-| **system_event 三角色** | 一等公民 role，存储清晰，进 LLM 再降级 | 通常被硬塞进 `user` / `system` |
-| **异步任务回写** | `session.pushSystemEvent()` 触发 agent 主动说话 | 要么轮询，要么用户下次发言才看见 |
-| **流式打断重组** | partial assistant 落库 `interrupted=true`，下轮 LLM 知道自己被打断了 | 多数 abort 完就丢了上下文 |
-| **理智线** | `on_long_wait` / `on_overflow_warning` / `on_compact_*` 事件 + 俚语桶 | 工具慢、快爆窗时 UI 没得说 |
-| **`/compact` 压缩历史** | 内置命令 + `session.compact()` 显式 API | 自己写 |
-| **依赖** | **0 运行时依赖** | 传递依赖一堆 |
-| **存储/LLM/Transport** | 全 interface 注入，SDK 不绑任何厂商 | 往往绑定具体实现 |
+| **Three-role model** | `user` / `assistant` / `system_event` as first-class roles | Events crammed into `user` or `system` |
+| **Async task writeback** | Tool fires async task → `pushSystemEvent()` triggers agent response when done | Must poll, or user has to send another message |
+| **Stream interruption** | Partial output persisted with `interrupted=true`, next turn LLM sees where it stopped | Abort = lost context |
+| **Built-in compression** | `/compact` command + `session.compact()` API, LLM summarizes history automatically | DIY |
+| **Sanity events** | `long_wait` / `overflow_warning` / `overflow_hit` with human-friendly interludes | No UX for slow tools or token limits |
+| **Runtime dependencies** | **0** | Transitive dependency trees |
+| **Vendor lock-in** | All interfaces — swap Storage/LLM/Transport freely | Often tied to specific providers |
 
-## 核心能力（v0.2.0）
+## How is this different from pi-agent-core?
 
-### 1. 三角色消息模型
-`user` / `assistant` / `system_event` —— 系统事件（任务完成、库存变更、提醒触发）天然存在，拥有独立 role，存储真实，进 LLM 时才按模板降级成 user 消息。
+[`pi-agent-core`](https://github.com/badlogic/pi-mono) is a lightweight single-session agent driver (prompt → tool calls → response). It's excellent at what it does, but:
 
-### 2. AgentLoop
-完整 tool-calling 循环：流式 token、工具并行/串行、循环上限、可中断。
+| | t2a-core | pi-agent-core |
+|---|---|---|
+| **Persistence** | Storage interface built-in — messages survive restarts | Purely in-memory, session dies when process ends |
+| **Async events** | `system_event` role + `pushSystemEvent()` — external systems inject events that trigger agent responses | No mechanism for external event injection |
+| **Interruption** | `session.interrupt()` — partial content saved, context preserved | `steer()` / `followUp()` but no partial persistence |
+| **Token management** | `/compact` + overflow detection + automatic interludes | `transformContext` (manual pruning only) |
+| **Message model** | Three roles with degradation strategy (system_event → user prefix at LLM boundary) | Standard two-role (user/assistant) |
+| **Multi-session coordination** | Designed for it — structured artifacts, event-driven handoffs | Single session only, no inter-session protocol |
 
-### 3. 异步任务 + 事件回写（async-by-event）
-工具里发起异步任务后立刻返回，业务完成时调 `session.pushSystemEvent()`，agent 自动接管组织下一段回复 —— **不用等用户下一次说话**。
+**In short:** pi-agent-core is a conversation driver. t2a-core is a **conversation kernel with state, events, and lifecycle management**.
 
-### 4. 流式打断重组
-`session.interrupt()` 会：停 LLM → partial 内容落库标记 `interrupted=true` → 下次发言时 LLM 看到自己刚才说到哪 → 自然承接。
+## Core Capabilities
 
-### 5. `/compact` 历史压缩
-用户打 `/compact`（或业务调 `session.compact()`）→ SDK 调 LLM 总结前 N 条 → 用 `compact_summary` system_event 替换历史。
+### 1. Three-Role Message Model
 
-### 6. 理智线事件
-工具执行超时发 `long_wait`、token 接近上限发 `overflow_warning`、超限发 `overflow_hit`；默认俚语库帮你在 UI 里"说人话"。
+```
+user          → what the human says
+assistant     → what the AI says
+system_event  → what the world tells the agent
+```
 
-### 7. 零依赖核心
-SDK 本体不引 SQLite / OpenAI SDK / EventEmitter / fetch。装包体积小、版本稳定、不担心传递依赖。
+System events (task completion, webhook triggers, sensor readings) are stored with their own role and source metadata. They only get "downgraded" to user-role messages at the LLM API boundary.
 
-## Quickstart
+### 2. Async-by-Event Pattern
+
+Tools don't have to block until completion. A tool handler can:
+1. Start an async operation (image generation, API call, long computation)
+2. Return immediately with an acknowledgment
+3. When done, call `session.pushSystemEvent()` — the agent picks up and responds
+
+**The user doesn't have to send another message** for the agent to react to completed work.
+
+### 3. Stream Interruption & Resume
+
+When `session.interrupt()` is called:
+1. Current LLM stream aborts
+2. Partial content is persisted with `interrupted: true`
+3. Next turn, the LLM sees its own partial output and naturally continues or pivots
+
+No context is lost. No awkward "sorry, where was I?" behavior.
+
+### 4. AgentLoop
+
+Full tool-calling loop with:
+- Streaming token delivery
+- Parallel and serial tool execution
+- Configurable max iterations
+- Interruptible at any point
+
+### 5. History Compression
+
+```ts
+await session.compact({ keepLastN: 10 });
+// or user types: /compact
+```
+
+SDK calls the LLM to summarize older messages, replaces them with a `compact_summary` system event. Context window stays healthy.
+
+### 6. Sanity Events & Interludes
+
+- **`long_wait`** — tool running too long? SDK emits event, default interludes give the user friendly feedback
+- **`overflow_warning`** — approaching token limit
+- **`overflow_hit`** — hard limit reached, triggers compact or rejection
+
+Built-in "interludes" (human-friendly messages) with 7 tone buckets. Override with your own.
+
+## Quick Start
 
 ```ts
 import { Session, ToolRegistry } from '@t2a/core';
@@ -62,106 +114,115 @@ const tools = new ToolRegistry();
 tools.register({
   schema: {
     name: 'get_weather',
-    description: '查天气',
-    parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] },
+    description: 'Get weather for a city',
+    parameters: {
+      type: 'object',
+      properties: { city: { type: 'string' } },
+      required: ['city'],
+    },
   },
   handler: async (args) => ({ ok: true, data: { city: args.city, temp: 22 } }),
 });
 
 const session = new Session({
-  sessionId: 'sess-001',
-  storage: myStorage,              // 业务实现 Storage 接口
-  llm: myLLMClient,                // 业务实现 LLMClient 接口
+  sessionId: 'demo-001',
+  storage: myStorage,       // implement Storage interface
+  llm: myLLMClient,         // implement LLMClient interface
   tools,
-  systemPrompt: '你是助手。',
-  longWaitMs: 8000,                // tool 超过 8s 发 long_wait 事件
-  compact: { triggerCommand: '/compact', keepLastN: 10 },
+  systemPrompt: 'You are a helpful assistant.',
 });
 
+// Listen to events
 session.on('text', ({ delta }) => process.stdout.write(delta));
-session.on('tool_start', ({ name, args }) => console.log('[tool]', name, args));
-session.on('long_wait', ({ toolCallId }) => console.log('[慢了]', toolCallId));
-session.on('overflow_warning', ({ usage }) => console.log('[快爆]', usage));
-session.on('done', () => console.log('\n[完成]'));
+session.on('tool_start', ({ name }) => console.log(`[tool] ${name}`));
+session.on('done', () => console.log('\n[done]'));
 
-await session.sendUserMessage('上海今天多少度？');
+await session.sendUserMessage('What is the weather in Tokyo?');
 ```
 
-**外部系统主动推送**（imagine 任务完成、MDM 员工入职通知）：
+### Async Event Injection
 
 ```ts
+// An external system completed a task — push it into the conversation
 session.pushSystemEvent({
-  source: 'imagine.task',
-  payload: { task_id: 42, images: ['https://.../a.png'] },
-  defaultResponse: '任务好了，我看看～',
-  triggerAgent: true,   // agent 自动接管组织回复
+  source: 'image_generator',
+  payload: { taskId: 42, url: 'https://example.com/result.png' },
+  triggerAgent: true,  // agent will respond to this event
 });
 ```
 
-**打断**：
+### Interruption
 
 ```ts
-session.interrupt();   // partial 落库，下次发言时 LLM 知道自己被打断了
+// User sends a new message while AI is still responding
+session.interrupt();
+// partial output is saved, next sendUserMessage() continues naturally
+await session.sendUserMessage('Actually, never mind. Tell me about...');
 ```
 
-**压缩**：
+## Reference Implementations (v0.3.0)
 
-```ts
-// 用户层面
-await session.sendUserMessage('/compact');
+The SDK ships with optional reference implementations:
 
-// 或业务层面
-await session.compact({ keepLastN: 10 });
-```
+- **`OpenAILLMClient`** — works with any OpenAI-compatible API (GPT, Claude via proxy, DeepSeek, Kimi, GLM, MiMo, etc.)
+- **`SQLiteStorage`** — `better-sqlite3` based, configurable table names
 
-## 典型使用场景
+These are provided as starting points. For production, implement the interfaces to match your stack.
 
-- **AI 图片/视频生成工具**（imagine）：生成任务异步，完成时主动把图/视频塞给 agent 让它说话
-- **MDM / 内部工作台**（岗位管理、组织管理）：审批流完成、员工入职变更主动推进对话
-- **IoT / 设备控制**：传感器触发事件主动打断对话
-- **长流程客服**：订单状态变更期间保持上下文、用户打断也不丢状态
-
-## 架构速览
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                    Session                      │
+│                    Session                       │
 │  ┌─────────────┐  ┌───────────┐  ┌──────────┐  │
-│  │ AgentLoop   │  │ EventBus  │  │ Interlude│  │
+│  │  AgentLoop  │  │  EventBus │  │ Interlude│  │
 │  └──────┬──────┘  └───────────┘  └──────────┘  │
 │         │                                       │
 │  ┌──────▼──────┐  ┌───────────┐  ┌──────────┐  │
-│  │ ToolRegistry│  │ Storage*  │  │ LLMClient*│  │
+│  │ToolRegistry │  │ Storage*  │  │LLMClient*│  │
 │  └─────────────┘  └───────────┘  └──────────┘  │
 └─────────────────────────────────────────────────┘
-                    * = 业务注入
+                    * = you provide these
 ```
 
-## 路线图
+## Use Cases
 
-| 版本 | 内容 | 状态 |
+- **AI generation tools** — image/video generation takes 60-120s; push results back to the agent when ready
+- **Internal platforms** — approval flows, employee onboarding events, data changes trigger conversational updates
+- **IoT / device control** — sensor events interrupt or inform ongoing conversations
+- **Long-running customer service** — order status changes mid-conversation without losing context
+
+## Documentation
+
+- [`DESIGN.md`](./DESIGN.md) — Full design document (architecture, decisions, trade-offs)
+- [`SCHEMA.md`](./SCHEMA.md) — Database schema (MySQL / SQLite DDL)
+- [`CHANGELOG.md`](./CHANGELOG.md) — Version history
+- [`ROADMAP.md`](./ROADMAP.md) — Version roadmap
+
+## Status
+
+- **92 tests** across 10 test files
+- Line coverage ≥ 92%, branch coverage ≥ 78%
+- `tsc --noEmit` + `tsup build` (ESM + CJS + .d.ts) passing
+- Zero breaking changes across v0.1 → v0.2 → v0.3
+
+## Roadmap
+
+| Version | Content | Status |
 |---|---|---|
-| v0.1.0 | 核心 SDK + 默认俚语 + reject overflow + schema 文档 | ✅ 封版 2026-05-02 |
-| **v0.2.0** | 流式打断重组 + `/compact` + 长 wait + overflow 理智线 | ✅ **封版 2026-05-02** |
-| v0.3.0 | imagine adapter 完整迁移 + 首发 `@t2a/core@0.3.0` 到 npm | 进行中 |
-| v0.4.0 | 第二个 adapter（demo MDM 员工查询 + 变更通知） | — |
-| v0.5+ | truncate / summarize overflow、多 LLM normalizer | — |
+| v0.1.0 | Core SDK — Session, AgentLoop, ToolRegistry, EventBus, Interlude | ✅ |
+| v0.2.0 | Stream interruption, `/compact`, long_wait, overflow sanity | ✅ |
+| v0.3.0 | OpenAILLMClient + SQLiteStorage reference impls, buildLLMMessages enhancements | ✅ |
+| v0.4.0 | Transport interface abstraction, second adapter validation | — |
+| v0.5+ | Multi-LLM normalizer, advanced truncation strategies | — |
 
-详见 [`ROADMAP.md`](./ROADMAP.md) / [`CHANGELOG.md`](./CHANGELOG.md)。
+## Install
 
-## 文档
+```bash
+npm install @t2a/core
+```
 
-- [`DESIGN.md`](./DESIGN.md) — 完整设计文档（核心交付，949 行）
-- [`SCHEMA.md`](./SCHEMA.md) — MySQL / SQLite DDL
-- [`EXAMPLES.md`](./EXAMPLES.md) — 三段端到端示例（quickstart / imagine / MDM）
-- [`ROADMAP.md`](./ROADMAP.md) — 版本规划
-- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — 贡献指南
-
-## 状态
-
-- **49 tests passed** · lines **92.87%** · branches **78.97%** · functions **90.62%**
-- `tsc --noEmit` / `tsup build`（ESM + CJS + dts）全绿
-- 零 breaking change，v0.1 → v0.2 纯增量
+> **Note:** Not yet published to npm. Coming soon with v0.3.x release.
 
 ## License
 
