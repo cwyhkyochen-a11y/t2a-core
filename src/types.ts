@@ -292,6 +292,7 @@ export interface ChatStreamInput {
  */
 export type ChatChunk =
   | { readonly type: 'text'; readonly delta: string }
+  | { readonly type: 'thinking'; readonly delta: string }
   | {
       readonly type: 'tool_call_delta';
       readonly index: number;
