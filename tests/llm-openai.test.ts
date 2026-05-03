@@ -261,4 +261,64 @@ describe('OpenAILLMClient', () => {
     const chunks = await collect(client.chatStream(makeInput({ abortSignal: ctl.signal })));
     expect(chunks[0].type).toBe('error');
   });
+
+  // --- T5: reasoning/thinking support ---
+
+  it('parseReasoning: true + reasoning_content yields thinking chunk', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      sseStream([
+        'data: {"choices":[{"delta":{"reasoning_content":"let me think"}}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"answer"}}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+        'data: [DONE]\n\n',
+      ]),
+    );
+    const client = new OpenAILLMClient({
+      baseUrl: 'https://api.test/v1',
+      apiKey: 'sk',
+      parseReasoning: true,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const chunks = await collect(client.chatStream(makeInput()));
+    expect(chunks[0]).toEqual({ type: 'thinking', delta: 'let me think' });
+    expect(chunks[1]).toEqual({ type: 'text', delta: 'answer' });
+  });
+
+  it('parseReasoning: false (default) ignores reasoning_content', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      sseStream([
+        'data: {"choices":[{"delta":{"reasoning_content":"hidden","content":"visible"}}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+        'data: [DONE]\n\n',
+      ]),
+    );
+    const client = new OpenAILLMClient({
+      baseUrl: 'https://api.test/v1',
+      apiKey: 'sk',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const chunks = await collect(client.chatStream(makeInput()));
+    expect(chunks[0]).toEqual({ type: 'text', delta: 'visible' });
+    expect(chunks.find((c) => c.type === 'thinking')).toBeUndefined();
+  });
+
+  it('parseReasoning: true + reasoning field yields thinking chunk', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      sseStream([
+        'data: {"choices":[{"delta":{"reasoning":"deep thought"}}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"result"}}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+        'data: [DONE]\n\n',
+      ]),
+    );
+    const client = new OpenAILLMClient({
+      baseUrl: 'https://api.test/v1',
+      apiKey: 'sk',
+      parseReasoning: true,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const chunks = await collect(client.chatStream(makeInput()));
+    expect(chunks[0]).toEqual({ type: 'thinking', delta: 'deep thought' });
+    expect(chunks[1]).toEqual({ type: 'text', delta: 'result' });
+  });
 });
