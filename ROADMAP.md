@@ -62,16 +62,31 @@
 
 ---
 
-## v0.4.0 — 上下文策略增强 + Transport 抽象
+## v0.4.0 — 上下文策略增强 + Transport 抽象（已封版 2026-05-03）
 
 **范围**：
 
-- [ ] `onOverflow: 'truncate'` —— 直接砍掉最早的 N 条
-- [ ] `onOverflow: 'summarize'` —— 调一次 LLM 压缩历史
-- [ ] 多 LLM fallback：主厂商挂了自动切备用
-- [ ] LLMClient 支持非 OpenAI 协议（Claude native / Gemini native）
-- [ ] 多模态 normalizer：自动把 OpenAI image_url 转 Claude / Gemini 格式
-- [ ] Transport 接口抽象（WebSocket / SSE / HTTP 通用）
+- [x] `onOverflow: 'truncate'` —— 直接砍掉最早的 N 条
+- [x] `onOverflow: 'summarize'` —— 调一次 LLM 压缩历史
+- [x] 多 LLM fallback：主厂商挂了自动切备用
+- [x] ~~LLMClient 支持非 OpenAI 协议（Claude native / Gemini native）~~ → moved to v0.5 and completed
+- [x] ~~多模态 normalizer：自动把 OpenAI image_url 转 Claude / Gemini 格式~~ → moved to v0.5 and completed
+- [x] Transport 接口抽象（WebSocket / SSE / HTTP 通用）
+
+---
+
+## v0.5.0 — 多厂商原生 LLMClient + 多模态 normalizer（已封版 2026-05-03）
+
+**范围**：
+
+- [x] `ClaudeLLMClient` — Anthropic Messages API 原生对接 + extended thinking
+- [x] `GeminiLLMClient` — Google Gemini REST API 原生对接 + thinking + 累积式 delta
+- [x] `OpenAILLMClient` 加 `parseReasoning` — 支持 reasoning tokens
+- [x] `ChatChunk` 新增 `thinking` 类型
+- [x] 多模态 normalizer 内置在各 LLMClient（方案 A：client 自治）
+- [x] 154 tests / tsc --noEmit 零错误
+
+**验收**：三厂商原生对接，无代理中转性能损耗，thinking 透传给应用层。
 
 ---
 

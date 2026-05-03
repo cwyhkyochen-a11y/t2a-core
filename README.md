@@ -3,9 +3,9 @@
 > `@t2a/core` · **Talk-to-Action Conversation Kernel**
 
 <p align="left">
-  <a href="https://github.com/cwyhkyochen-a11y/t2a-core/releases"><img alt="version" src="https://img.shields.io/badge/version-v0.4.0-blue"></a>
+  <a href="https://github.com/cwyhkyochen-a11y/t2a-core/releases"><img alt="version" src="https://img.shields.io/badge/version-v0.5.0-blue"></a>
   <a href="./LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
-  <img alt="tests" src="https://img.shields.io/badge/tests-129%20passed-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-154%20passed-brightgreen">
   <img alt="coverage" src="https://img.shields.io/badge/coverage-92%25-brightgreen">
   <img alt="deps" src="https://img.shields.io/badge/runtime%20deps-0-blueviolet">
 </p>
@@ -207,10 +207,42 @@ await session.sendUserMessage('Actually, never mind. Tell me about...');
 
 The SDK ships with optional reference implementations:
 
-- **`OpenAILLMClient`** — works with any OpenAI-compatible API (GPT, Claude via proxy, DeepSeek, Kimi, GLM, MiMo, etc.)
+- **`OpenAILLMClient`** — works with any OpenAI-compatible API (GPT, DeepSeek, Kimi, GLM, MiMo, etc.), with optional `parseReasoning` for o1/o3 reasoning tokens
+- **`ClaudeLLMClient`** — Anthropic Messages API native, with extended thinking and multi-modal normalizer
+- **`GeminiLLMClient`** — Google Gemini REST API native, with thinking support and cumulative SSE delta extraction
 - **`SQLiteStorage`** — `better-sqlite3` based, configurable table names
 
 These are provided as starting points. For production, implement the interfaces to match your stack.
+
+### Multi-Vendor LLM Clients (v0.5.0)
+
+```ts
+import { ClaudeLLMClient, GeminiLLMClient, OpenAILLMClient } from '@t2a/core';
+
+// OpenAI / 兼容厂商
+const openai = new OpenAILLMClient({
+  baseUrl: 'https://api.openai.com/v1',
+  apiKey: 'sk-...',
+  model: 'gpt-4o',
+  parseReasoning: true,  // 解析 o1/o3 reasoning tokens
+});
+
+// Claude 原生
+const claude = new ClaudeLLMClient({
+  baseUrl: 'https://api.anthropic.com/v1',
+  apiKey: 'sk-ant-...',
+  model: 'claude-sonnet-4-20250514',
+  thinking: { type: 'enabled', budgetTokens: 10000 },
+});
+
+// Gemini 原生
+const gemini = new GeminiLLMClient({
+  baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+  apiKey: 'AIza...',
+  model: 'gemini-2.5-pro',
+  thinking: { includeThoughts: true, thinkingBudget: 8000 },
+});
+```
 
 ## Architecture
 
@@ -244,10 +276,11 @@ These are provided as starting points. For production, implement the interfaces 
 
 ## Status
 
-- **92 tests** across 10 test files
+- **154 tests** across 16 test files
 - Line coverage ≥ 92%, branch coverage ≥ 78%
 - `tsc --noEmit` + `tsup build` (ESM + CJS + .d.ts) passing
-- Zero breaking changes across v0.1 → v0.2 → v0.3
+- Zero breaking changes across v0.1 → v0.5
+- 🧠 **Multi-vendor native LLM clients** — OpenAI, Claude, Gemini with thinking/reasoning support
 
 ## Roadmap
 
@@ -257,7 +290,7 @@ These are provided as starting points. For production, implement the interfaces 
 | v0.2.0 | Stream interruption, `/compact`, long_wait, overflow sanity | ✅ |
 | v0.3.0 | OpenAILLMClient + SQLiteStorage reference impls, buildLLMMessages enhancements | ✅ |
 | v0.4.0 | Overflow strategies (truncate/summarize), Transport interface, Multi-LLM fallback | ✅ |
-| v0.5.0 | Claude/Gemini native LLMClient, multi-modal normalizer | — |
+| v0.5.0 | Claude/Gemini native LLMClient, multi-modal normalizer, thinking support | ✅ |
 
 ## Install
 

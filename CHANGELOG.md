@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.5.0 (2026-05-03)
+
+### Features
+
+- **T6 Claude 原生 LLMClient** (`src/llm-claude.ts`): Anthropic Messages API 直连，支持 extended thinking、多模态 normalizer（base64/URL 图片自动转换）、tool_use 流、adjacent role merging
+- **T6 Gemini 原生 LLMClient** (`src/llm-gemini.ts`): Google Gemini REST API 直连，支持 thinking（thought 标记）、累积式 SSE diff 提取、functionCall、`x-goog-api-key` header 安全认证
+- **T6 OpenAI reasoning 支持**: `parseReasoning` 选项，解析 o1/o3/o4-mini 的 reasoning_content/reasoning 字段为 thinking chunk
+- **T7 多模态 normalizer**: 内置在各 LLMClient 中（方案 A），自动转换 OpenAI image_url 格式到各厂商原生格式
+- **ChatChunk `thinking` 类型**: 新增 `{ type: 'thinking', delta: string }` 支持模型思考过程透传
+
+### Types
+
+- `ChatChunk` 新增 `thinking` 变体
+- `ClaudeLLMClientOptions` — 含 `thinking` / `anthropicVersion` 配置
+- `GeminiLLMClientOptions` — 含 `thinking` / `thinkingBudget` 配置
+- `OpenAILLMClientOptions.parseReasoning?: boolean`
+
+### Tests
+
+- 25 new tests（Claude 11 + Gemini 11 + OpenAI reasoning 3）
+- 154 tests total / 16 test files / tsc --noEmit 零错误
+
+### Breaking Changes
+
+无（纯增量）
+
+---
+
 ## v0.4.0 (2026-05-03)
 
 ### Features
