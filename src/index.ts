@@ -15,6 +15,8 @@ export type { AgentLoopContext } from './agent-loop.js';
 export { Session } from './session.js';
 export { OpenAILLMClient } from './llm-openai.js';
 export type { OpenAILLMClientOptions } from './llm-openai.js';
+export { ClaudeLLMClient, normalizeMessages } from './llm-claude.js';
+export type { ClaudeLLMClientOptions } from './llm-claude.js';
 export { SQLiteStorage, defaultTokenCounter } from './storage-sqlite.js';
 export type {
   SQLiteStorageOptions,
