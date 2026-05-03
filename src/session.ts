@@ -24,6 +24,8 @@ import type {
   SessionState,
   StoredMessage,
   SystemEventMessage,
+  Transport,
+  TransportIncomingMessage,
   TurnResult,
   Unsubscribe,
   UserMessage,
@@ -72,6 +74,8 @@ export class Session implements SessionLike {
   private currentAbort: AbortController | null = null;
   private turnInFlight: Promise<TurnResult | void> | null = null;
   private disposed = false;
+  private readonly transport: Transport | null;
+  private readonly transportUnsubs: Unsubscribe[] = [];
 
   constructor(options: SessionOptions & { model?: string }) {
     this.sessionId = options.sessionId;
@@ -82,6 +86,8 @@ export class Session implements SessionLike {
     this.config = mergeConfig(options.config);
     this.interlude = options.interludeProvider ?? new DefaultInterludeProvider();
     this.model = options.model ?? 'default';
+    this.transport = options.transport ?? null;
+    if (this.transport) this.wireTransport(this.transport);
   }
 
   get state(): SessionState {
@@ -214,6 +220,21 @@ export class Session implements SessionLike {
   dispose(): void {
     this.disposed = true;
     this.abortCurrent('dispose');
+    for (const un of this.transportUnsubs) {
+      try {
+        un();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.transportUnsubs.length = 0;
+    if (this.transport) {
+      try {
+        void this.transport.close();
+      } catch {
+        /* ignore */
+      }
+    }
     this.bus.removeAll();
   }
 
@@ -307,6 +328,72 @@ export class Session implements SessionLike {
   private assertNotDisposed(): void {
     if (this.disposed) {
       throw new Error('[t2a-core] session has been disposed');
+    }
+  }
+
+  /**
+   * Wire transport <-> session:
+   *  - auto-forward a curated set of bus events as TransportEvent
+   *  - route inbound client messages to sendUserMessage / interrupt
+   */
+  private wireTransport(transport: Transport): void {
+    const safeSend = (type: string, payload: unknown): void => {
+      try {
+        const maybe = transport.send({ type, payload });
+        if (maybe && typeof (maybe as Promise<void>).then === 'function') {
+          (maybe as Promise<void>).catch(() => {
+            /* swallow transport send errors */
+          });
+        }
+      } catch {
+        /* swallow transport send errors */
+      }
+    };
+
+    this.transportUnsubs.push(
+      this.bus.on('text', (p) => safeSend('text_delta', p)),
+      this.bus.on('tool_start', (p) => safeSend('tool_start', p)),
+      this.bus.on('tool_end', (p) => safeSend('tool_end', p)),
+      this.bus.on('tool_error', (p) => safeSend('tool_error', p)),
+      this.bus.on('done', (p) => safeSend('done', p)),
+      this.bus.on('error', (p) => safeSend('error', {
+        phase: p.phase,
+        message: p.error?.message ?? String(p.error),
+      })),
+      this.bus.on('system_event_arrived', (p) => safeSend('system_event', p)),
+      this.bus.on('interrupt', (p) => safeSend('interrupt', p)),
+      this.bus.on('interlude', (p) => safeSend('interlude', p)),
+      this.bus.on('state_change', (p) => safeSend('state_change', p)),
+    );
+
+    transport.onMessage((msg) => {
+      void this.handleTransportMessage(msg);
+    });
+  }
+
+  private async handleTransportMessage(msg: TransportIncomingMessage): Promise<void> {
+    if (this.disposed) return;
+    try {
+      if (msg.type === 'user_message') {
+        const payload = msg.payload as
+          | { content?: string | readonly MultiPart[] }
+          | string
+          | undefined;
+        const content =
+          typeof payload === 'string'
+            ? payload
+            : (payload?.content ?? '');
+        if (content === '' || content === undefined) return;
+        await this.sendUserMessage(content);
+      } else if (msg.type === 'interrupt') {
+        const reason =
+          (msg.payload as { reason?: string } | undefined)?.reason ?? 'transport';
+        this.interrupt(reason);
+      }
+      // `command` and unknown types are reserved/ignored for now.
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.bus.emit('error', { phase: 'transport', error });
     }
   }
 

@@ -566,6 +566,15 @@ export interface SessionOptions {
   readonly systemPrompt?: string;
   readonly config?: Partial<SessionConfig>;
   readonly interludeProvider?: InterludeProvider;
+  /**
+   * Optional pluggable transport. When supplied:
+   * - selected session events (text, tool_start, tool_end, done, error,
+   *   system_event_arrived) are auto-forwarded via `transport.send()`.
+   * - inbound messages are routed to `sendUserMessage` / `interrupt`.
+   *
+   * @see DESIGN.md § Transport (v0.4)
+   */
+  readonly transport?: Transport;
 }
 
 /**
@@ -680,3 +689,59 @@ export type SessionEventHandler<K extends SessionEventName> = (
  * Disposer returned from `Session.on(...)`.
  */
 export type Unsubscribe = () => void;
+
+// ============================================================================
+// § Transport (v0.4 T3) — pluggable client transport layer
+// ============================================================================
+
+/**
+ * Outbound event pushed from Session to a remote client.
+ *
+ * The SDK auto-forwards a curated subset of session events
+ * (text, tool_start, tool_end, done, error, system_event_arrived) when a
+ * Transport is attached to a Session. Application code may also push
+ * arbitrary events with custom `type` strings.
+ *
+ * @see DESIGN.md § Transport (v0.4)
+ */
+export interface TransportEvent {
+  readonly type:
+    | 'text_delta'
+    | 'tool_start'
+    | 'tool_end'
+    | 'done'
+    | 'error'
+    | 'system_event'
+    | (string & {});
+  readonly payload: unknown;
+}
+
+/**
+ * Inbound message received from a remote client.
+ *
+ * `user_message` → routed to `session.sendUserMessage(payload.content)`.
+ * `interrupt`    → routed to `session.interrupt(payload?.reason)`.
+ * `command`      → reserved for future use; the SDK ignores unknown types.
+ *
+ * @see DESIGN.md § Transport (v0.4)
+ */
+export interface TransportIncomingMessage {
+  readonly type: 'user_message' | 'interrupt' | 'command' | (string & {});
+  readonly payload: unknown;
+}
+
+/**
+ * Pluggable transport interface — the SDK ships no concrete impl in core.
+ *
+ * Reference impl `WebSocketTransport` lives at `@t2a/core/transport-ws`.
+ *
+ * @see DESIGN.md § Transport (v0.4)
+ */
+export interface Transport {
+  /** Push an event/message to the client. */
+  send(event: TransportEvent): void | Promise<void>;
+  /** Register a handler invoked for every inbound client message. */
+  onMessage(handler: (msg: TransportIncomingMessage) => void): void;
+  /** Tear down the underlying connection. */
+  close(): void | Promise<void>;
+}
