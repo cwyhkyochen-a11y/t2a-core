@@ -132,6 +132,18 @@ export type DistributiveOmit<T, K extends keyof T> = T extends unknown
   ? Omit<T, K>
   : never;
 
+/**
+ * Options for `buildLLMMessages` — Plan C history degradation.
+ *
+ * @see message-builder.ts
+ */
+export interface BuildLLMMessagesOptions {
+  /** 启用方案 C 历史降级（默认 false，向后兼容） */
+  degradeHistoryTools?: boolean;
+  /** 时区偏移分钟数，默认 480 (Asia/Shanghai = UTC+8) */
+  timezoneOffsetMinutes?: number;
+}
+
 /** Input shape accepted by `Storage.appendMessage`. */
 export type AppendMessageInput = DistributiveOmit<StoredMessage, 'createdAt'> & {
   readonly createdAt?: number;
