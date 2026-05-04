@@ -169,6 +169,39 @@ await session.compact({ keepLastN: 10 });
 
 SDK calls the LLM to summarize older messages, replaces them with a `compact_summary` system event. Context window stays healthy.
 
+#### How compact actually works
+
+1. **Load full history** for the session from storage.
+2. **Split**: messages older than `keepLastN` → `toCompact`; the latest `keepLastN` → `kept`.
+   - If `history.length <= keepLastN`, emits `system_notice { code: 'compact_nothing_to_do' }` and returns.
+3. **Summarize**: build a single text blob from `toCompact` (user / assistant / tool / system_event lines), send it to the LLM with `compact.summarizerSystemPrompt` (overridable via config).
+4. **Soft-delete the old range** via `Storage.replaceRange()`:
+   - Sets `deleted_at = now` on every message in `toCompact` (no rows are physically deleted).
+   - Inserts **one new** message of role `system_event` with `source = 'compact_summary'` and the LLM-produced summary as content.
+5. **Persist a notice**: a `notice { type: 'compact_done', payload: { compactedCount } }` is also written to storage so admins/UI can see when each compaction happened.
+6. **Emit events** on the bus:
+   - `compact_start { messageCount }` before the LLM call
+   - `compact_done { ... }` after success
+   - `system_notice { code: 'compact_failed' }` on summarizer failure (original history is left intact)
+7. **`maybeInterlude('on_compact_start' | 'on_compact_done')`** runs so users see something while the summarizer thinks.
+
+#### Implications for downstream consumers
+
+- **Auditability**: Old messages are *retained* with `deleted_at` set — history is reversible/inspectable, never lost.
+- **Active-history queries** (the ones the LLM sees, and any "current" UI views) should always filter `WHERE deleted_at IS NULL`. The bundled `SQLiteStorage.loadMessages()` does this for you.
+- **Message counts shrink after compact**. Example: 34 messages, `compact({ keepLastN: 20 })` →
+  - 14 messages get `deleted_at = now`
+  - 1 new `compact_summary` message is inserted
+  - Active count becomes `20 + 1 = 21`
+  - Total row count in the table is still `35` (deleted rows are kept).
+- **Admin / analytics dashboards** that want to show *active* conversation length must use `WHERE deleted_at IS NULL`. To show *lifetime* message volume, drop that filter.
+- **Storage requirement**: any custom Storage implementation MUST provide `replaceRange()` semantics that soft-delete a range and atomically append the summary message. `session.compact()` throws if `Storage.replaceRange` is missing.
+
+#### When compact runs automatically
+
+- User types the `compactCommand` (default `/compact`) — intercepted before LLM dispatch.
+- `onOverflow: 'summarize'` is configured and the context window is hit — Session calls `compact()` automatically before resuming the turn (see `onOverflow` modes: `truncate` / `summarize` / `reject`).
+
 ### 6. Sanity Events & Interludes
 
 - **`long_wait`** — tool running too long? SDK emits event, default interludes give the user friendly feedback
