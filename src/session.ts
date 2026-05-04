@@ -228,6 +228,7 @@ export class Session implements SessionLike {
 
   interrupt(reason: string = 'manual'): void {
     if (!this.isBusy()) return;
+    this.maybeInterlude('on_interrupt');
     this.abortCurrent(reason);
   }
 

@@ -576,6 +576,9 @@ export class AgentLoop {
           text += chunk.delta;
           bus.emit('text', { delta: chunk.delta });
           break;
+        case 'thinking':
+          bus.emit('thinking', { delta: chunk.delta });
+          break;
         case 'tool_call_delta': {
           markFirstChunk();
           const existing: ToolCallAcc = toolCallsAcc.get(chunk.index) ?? { argsBuf: '' };
@@ -691,6 +694,9 @@ export class AgentLoop {
           }
           text += chunk.delta;
           bus.emit('text', { delta: chunk.delta });
+          break;
+        case 'thinking':
+          bus.emit('thinking', { delta: chunk.delta });
           break;
         case 'tool_call_delta': {
           const existing: ToolCallAcc = toolCallsAcc.get(chunk.index) ?? { argsBuf: '' };

@@ -694,6 +694,8 @@ export interface SessionEvents {
   state_change: { readonly from: SessionState; readonly to: SessionState };
   /** LLM text token chunk. */
   text: { readonly delta: string };
+  /** v0.6.2: thinking/reasoning chunk 透传（来自 LLM 的 reasoning content）。 */
+  thinking: { readonly delta: string };
   /** A tool started executing. */
   tool_start: { readonly id: string; readonly name: string; readonly args: unknown };
   /** A tool finished (success or business failure). */

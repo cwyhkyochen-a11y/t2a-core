@@ -16,6 +16,7 @@ import type {
 const INTERNAL_EVENT_NAMES: ReadonlySet<keyof SessionEvents> = new Set<keyof SessionEvents>([
   'state_change',
   'text',
+  'thinking',
   'tool_start',
   'tool_end',
   'tool_error',

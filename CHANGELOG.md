@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.6.2 (2026-05-04)
+
+### Bug Fixes
+
+- **打断俱语 bug**: `Session.interrupt(reason)` 之前只 abort 当前 turn，不触发 `on_interrupt` interlude（只有内部 system_event 抢占路径才会触发）。现修为在 `abortCurrent` 前调 `maybeInterlude('on_interrupt')`，与其他路径保持一致。
+- **`thinking` chunk 被吞**: AgentLoop 两段流式 `handleChunk` 的 switch 都没有 `'thinking'` case，LLM 的 reasoning 内容到了 SDK 边界就丢了。现加入 `bus.emit('thinking', { delta })`。
+
+### Types
+
+- `SessionEvents.thinking: { readonly delta: string }` — thinking/reasoning chunk 透传事件
+- `EventBus.INTERNAL_EVENT_NAMES` 同步加入 `'thinking'`（否则事件名校验会报错）
+
+### Tests
+
+- `tests/session-thinking-interrupt.test.ts`：3 个新用例（thinking emit × 1 + interrupt interlude × 2）
+- 168 tests total / `tsc --noEmit` 零错误
+
+### Breaking Changes
+
+无（纯增量 bug fix）
+
+---
+
 ## v0.5.0 (2026-05-03)
 
 ### Features
