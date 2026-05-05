@@ -3,9 +3,10 @@
 > `@t2a/core` · **Talk-to-Action Conversation Kernel**
 
 <p align="left">
-  <a href="https://github.com/cwyhkyochen-a11y/t2a-core/releases"><img alt="version" src="https://img.shields.io/badge/version-v0.5.0-blue"></a>
+  <a href="https://github.com/cwyhkyochen-a11y/t2a-core/releases"><img alt="version" src="https://img.shields.io/badge/version-v0.6.2-blue"></a>
+  <a href="https://www.npmjs.com/package/@t2a/core"><img alt="npm" src="https://img.shields.io/badge/npm-%40t2a%2Fcore-cb3837"></a>
   <a href="./LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
-  <img alt="tests" src="https://img.shields.io/badge/tests-154%20passed-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-168%20passed-brightgreen">
   <img alt="coverage" src="https://img.shields.io/badge/coverage-92%25-brightgreen">
   <img alt="deps" src="https://img.shields.io/badge/runtime%20deps-0-blueviolet">
 </p>
@@ -14,10 +15,10 @@
 
 ## What is t2a-core?
 
-A TypeScript SDK that models LLM conversations as a **group chat between Human, AI, and Systems**.
+A TypeScript SDK that models LLM conversations as a **group chat between Human, AI, and Systems** — where systems are **equal participants**, not passive tools.
 
 Traditional chat: User asks → AI answers (maybe calls a tool).
-t2a-core: **One user, one AI, N systems — all first-class participants in a shared session timeline.**
+t2a-core: **One user, one AI, N systems — all with equal speaking rights in a shared session timeline.**
 
 ```
 User (operator)
@@ -48,6 +49,37 @@ Users shouldn't need to know how many systems exist behind an app, or learn each
 - **Enterprise user:** "Summarize this quarter's sales, compare with last year, draft a report" → BI + docs + email
 
 Same model: **one human, one AI, N systems — one session.**
+
+## The t2a ecosystem
+
+`t2a-core` is the **kernel**. It does not ship a UI, transport, or storage of its own — those are interfaces you implement (or pick from the official runtime).
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Your business app                                           │
+│  (image gen, ops console, CRM, customer support, ...)        │
+└──────────────────────────┬───────────────────────────────────┘
+                           │  adapter (auth + tools + taskTypes)
+┌──────────────────────────┴───────────────────────────────────┐
+│  @t2a/chat            ← official runtime (UI + WS + DB)      │
+│  drop-in chat server, native interactive forms,              │
+│  multi-modal attachments, slot system, admin                 │
+└──────────────────────────┬───────────────────────────────────┘
+                           │
+┌──────────────────────────┴───────────────────────────────────┐
+│  @t2a/core            ← THIS REPO (kernel)                   │
+│  Session · EventBus · AgentLoop · Storage · LLMClient        │
+│  Three-role messages · system_event · /compact · interrupt   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+| Layer | Package | Owns |
+|---|---|---|
+| **Business** | your app | domain, business rules, what the AI can do |
+| **Runtime** | [`@t2a/chat`](https://github.com/cwyhkyochen-a11y/t2a-chat) | UI / WS / DB / admin / form blocks / attachments |
+| **Kernel** | **`@t2a/core`** | conversation engine, message timeline, system events, lifecycle |
+
+You can use the kernel standalone (CLI agent, embedded NPC dialog, batch worker) or pair it with `@t2a/chat` for a full chat product. They version together; the kernel never depends on the runtime.
 
 ## Why a "group chat" kernel?
 
@@ -416,6 +448,7 @@ Each system reports back asynchronously. The AI synthesizes all results. The use
 | v0.3.0 | OpenAILLMClient + SQLiteStorage reference impls, buildLLMMessages enhancements | ✅ |
 | v0.4.0 | Overflow strategies (truncate/summarize), Transport interface, Multi-LLM fallback | ✅ |
 | v0.5.0 | Claude/Gemini native LLMClient, multi-modal normalizer, thinking support | ✅ |
+| v0.6.0–0.6.2 | `thinking` chunk emission across the SDK boundary, `on_interrupt` interlude consistency, 168 tests | ✅ |
 
 ## Install
 
@@ -424,6 +457,12 @@ npm install @t2a/core
 ```
 
 
+
+## What's new in v0.6
+
+- **`thinking` chunk now reaches your code.** Previously the SDK swallowed reasoning deltas in the AgentLoop switch; now `session.on('thinking', ({ delta }) => ...)` works for o1/o3, Claude extended thinking, and Gemini thoughts.
+- **`session.interrupt(reason)` now triggers `on_interrupt` interlude** along the user-initiated abort path (was only firing on internal preemption). User-facing UX is now consistent across all interrupt sources.
+- **168 tests, `tsc --noEmit` clean.**
 
 ## License
 
